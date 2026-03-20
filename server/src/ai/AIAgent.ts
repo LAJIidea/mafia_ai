@@ -120,6 +120,14 @@ ${nonWerewolves.map(p => `- ${p.name} (ID: ${p.id})`).join('\n')}
 请以JSON格式回复：{"action": "vote", "targetId": "玩家ID"} 或 {"action": "vote", "targetId": null}`;
         break;
 
+      case GamePhase.PK_VOTING:
+        const pkCandidates = alivePlayers.filter(p => gameState.pkCandidates?.includes(p.id));
+        prompt += `现在是PK投票阶段，以下玩家平票进入PK：
+${pkCandidates.map(p => `- ${p.name} (ID: ${p.id})`).join('\n')}
+请从PK候选人中选择一人投票（也可以弃票）。
+请以JSON格式回复：{"action": "vote", "targetId": "候选人ID"} 或 {"action": "vote", "targetId": null}`;
+        break;
+
       case GamePhase.HUNTER_SHOOT:
         prompt += `你是猎人，你刚刚死亡，可以选择带走一名玩家。
 请以JSON格式回复：{"action": "shoot", "targetId": "玩家ID"} 或 {"action": "shoot", "targetId": null}`;
@@ -216,6 +224,14 @@ ${this.memory.length > 0 ? this.memory.join('\n') : '暂无'}
         return { playerId: player.id, action: 'investigate', targetId: randomTarget?.id };
       case GamePhase.VOTING:
         return { playerId: player.id, action: 'vote', targetId: randomTarget?.id };
+      case GamePhase.PK_VOTING: {
+        const pkIds = gameState.pkCandidates || [];
+        const pkTargets = alivePlayers.filter(p => pkIds.includes(p.id));
+        const pkTarget = pkTargets.length > 0
+          ? pkTargets[Math.floor(Math.random() * pkTargets.length)]
+          : null;
+        return { playerId: player.id, action: 'vote', targetId: pkTarget?.id };
+      }
       case GamePhase.HUNTER_SHOOT:
         return { playerId: player.id, action: 'shoot', targetId: randomTarget?.id };
       default:

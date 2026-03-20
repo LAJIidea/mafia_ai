@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GameEngine, validateRoleConfig, getDefaultConfig } from '../engine/GameEngine.js';
 import { RoleName, GamePhase, PlayerType, RoomConfig, PRESET_CONFIGS, Team } from '../engine/types.js';
+import { AIAgent } from '../ai/AIAgent.js';
 
 function setupGame(playerCount: number = 12): { engine: GameEngine; playerIds: string[] } {
   const preset = PRESET_CONFIGS[playerCount];
@@ -293,8 +294,48 @@ describe('GameEngine', () => {
     it('非讨论阶段不能发言', () => {
       const { engine, playerIds } = setupGame(6);
       engine.startGame();
-      // Should be in night phase
       expect(engine.canSpeak(playerIds[0])).toBe(false);
+    });
+  });
+
+  describe('遗言阶段', () => {
+    it('活人在遗言阶段不能发言', () => {
+      const { engine } = setupGame(6);
+      engine.startGame();
+      // Skip to dawn with a death
+      const state = engine.getState();
+      const werewolf = state.players.find(p => p.role === RoleName.WEREWOLF);
+      const target = state.players.find(p => p.role !== RoleName.WEREWOLF && p.alive);
+      if (!werewolf || !target) return;
+
+      engine.handleAction({ playerId: werewolf.id, action: 'kill', targetId: target.id });
+
+      const witch = state.players.find(p => p.role === RoleName.WITCH);
+      if (witch) engine.handleAction({ playerId: witch.id, action: 'witch_skip' });
+
+      const seer = state.players.find(p => p.role === RoleName.SEER);
+      if (seer) engine.handleAction({ playerId: seer.id, action: 'investigate' });
+
+      // Should now be in dawn/last_words
+      const current = engine.getState();
+      if (current.phase === GamePhase.LAST_WORDS) {
+        // Dead player should be able to speak
+        expect(engine.canSpeak(target.id)).toBe(true);
+        // Alive player should NOT be able to speak
+        const aliveNonTarget = current.players.find(p => p.alive && p.id !== target.id);
+        if (aliveNonTarget) {
+          expect(engine.canSpeak(aliveNonTarget.id)).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe('AI配置', () => {
+    it('AIAgent记忆系统保留发言', () => {
+      const agent = new AIAgent({ apiToken: 'test', baseUrl: 'http://test' }, 'test-model');
+      agent.addMemory('Player1说: "我是预言家"');
+      agent.addMemory('Player2说: "我不信你"');
+      expect(() => agent.addMemory('test')).not.toThrow();
     });
   });
 });

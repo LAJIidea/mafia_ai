@@ -25,6 +25,7 @@ interface ChatMessage {
   message: string;
   type: 'voice' | 'text';
   timestamp: number;
+  aiModel?: string;
 }
 
 interface GameState {
@@ -132,13 +133,9 @@ export default function Game() {
 
     socket.on('chat_message', (msg: ChatMessage) => {
       setMessages(prev => [...prev, msg]);
-      // 如果是AI发言，播放TTS
-      if (msg.type === 'text') {
-        // 查找AI玩家信息
-        const aiPlayer = gameState?.players.find(p => p.id === msg.playerId && p.type === 'ai');
-        if (aiPlayer?.aiModel) {
-          playAISpeech(msg.message, aiPlayer.aiModel);
-        }
+      // AI发言播放TTS - 直接使用消息中的aiModel字段，避免闭包陈旧
+      if (msg.aiModel) {
+        playAISpeech(msg.message, msg.aiModel);
       }
     });
 
@@ -202,8 +199,19 @@ export default function Game() {
     );
   }
 
-  const canSpeak = (gameState.phase === 'discussion' || gameState.phase === 'last_words')
-    && myPlayer?.alive === true;
+  const canSpeak = (() => {
+    if (!myPlayer) return false;
+    const phase = gameState.phase;
+    // 遗言阶段：只有死者可发言
+    if (phase === 'last_words') {
+      return !myPlayer.alive && gameState.deaths.includes(myPlayerId);
+    }
+    // 讨论/PK发言：只有活人可发言
+    if (phase === 'discussion' || phase === 'pk_speech') {
+      return myPlayer.alive;
+    }
+    return false;
+  })();
 
   return (
     <div className="h-screen night-overlay flex flex-col overflow-hidden">

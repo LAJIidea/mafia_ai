@@ -12,7 +12,7 @@ export class STTService {
   // 服务端STT主要用于处理客户端发送的音频（备选方案）
   // 主要方案是使用浏览器的 Web Speech API (在客户端实现)
 
-  async transcribeFromBuffer(audioBuffer: Buffer): Promise<TranscriptionResult> {
+  async transcribeFromBuffer(_audioBuffer: Buffer): Promise<TranscriptionResult> {
     // 使用 Whisper API 作为备选方案（需要配置）
     // 这里提供接口，实际调用在配置了 Whisper 服务后启用
     throw new Error('Server-side STT not configured. Use client-side Web Speech API.');

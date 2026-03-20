@@ -4,6 +4,7 @@ import { RoleName, PlayerType, PRESET_CONFIGS, getDefaultConfig } from '../engin
 import { networkInterfaces } from 'os';
 import QRCode from 'qrcode';
 import { TTSService, VOICE_PROFILES, NARRATOR_LINES } from '../voice/TTSService.js';
+import { setGlobalAIConfig, getGlobalAIConfig } from '../ai/config.js';
 
 const ttsService = new TTSService();
 
@@ -101,12 +102,12 @@ export function setupRoutes(app: Express, roomManager: RoomManager): void {
       return;
     }
 
-    (app as any).__aiConfig = { apiToken, models };
+    setGlobalAIConfig({ apiToken, models: models || [] });
     res.json({ success: true, message: 'AI配置已保存' });
   });
 
   app.get('/api/ai/config', (_req, res) => {
-    const config = (app as any).__aiConfig || null;
+    const config = getGlobalAIConfig();
     res.json({
       configured: !!config,
       models: config?.models || [],

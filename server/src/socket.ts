@@ -1,7 +1,8 @@
 import { Server as SocketServer, Socket } from 'socket.io';
 import { RoomManager, Room } from './engine/index.js';
 import { PlayerType, GamePhase, RoleName, PHASE_TIMEOUTS } from './engine/types.js';
-import { AIManager, AIAgent } from './ai/AIAgent.js';
+import { AIManager } from './ai/AIAgent.js';
+import { getGlobalAIConfig } from './ai/config.js';
 
 // Socket → player mapping (only for human players)
 const socketPlayerMap = new Map<string, { roomId: string; playerId: string }>();
@@ -67,11 +68,16 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
         return;
       }
 
-      // Check AI config
+      // Check AI config - sync from global store if needed
       const aiManager = getOrCreateAIManager(data.roomId);
       if (!aiManager.getConfig()) {
-        socket.emit('error', { message: '请先配置AI API Token' });
-        return;
+        const globalConfig = getGlobalAIConfig();
+        if (globalConfig) {
+          aiManager.setConfig(globalConfig.apiToken);
+        } else {
+          socket.emit('error', { message: '请先在设置页面配置AI API Token' });
+          return;
+        }
       }
 
       const result = room.engine.addPlayer(
@@ -200,6 +206,19 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
         type: data.type,
         timestamp: Date.now(),
       });
+
+      // Write chat to all AI agents' memory for future decisions
+      const aiManager = roomAIManagers.get(mapping.roomId);
+      if (aiManager) {
+        for (const aiPlayer of state.players) {
+          if (aiPlayer.type === PlayerType.AI && aiPlayer.id !== mapping.playerId) {
+            const agent = aiManager.getAgent(aiPlayer.id);
+            if (agent) {
+              agent.addMemory(`${player.name}说: "${data.message}"`);
+            }
+          }
+        }
+      }
     });
 
     socket.on('disconnect', () => {
@@ -333,6 +352,16 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
             timestamp: Date.now(),
             aiModel: aiPlayer.aiModel,
           });
+          // Write speech to all other AI agents' memory
+          for (const otherPlayer of currentState.players) {
+            if (otherPlayer.type === PlayerType.AI && otherPlayer.id !== aiPlayer.id) {
+              const otherAgent = aiManager.getAgent(otherPlayer.id);
+              if (otherAgent) {
+                otherAgent.addMemory(`${aiPlayer.name}说: "${speech}"`);
+              }
+            }
+          }
+          agent.addMemory(`我发言: "${speech}"`);
           // Advance to next speaker
           room.engine.advanceSpeaker();
           broadcastPlayerViews(io, room);
@@ -343,24 +372,28 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
           return;
         }
       } else {
-        // AI action (vote, kill, guard, etc.)
-        const action = await agent.decide(aiPlayer, currentState);
-        const result = room.engine.handleAction(action);
+        // AI action (vote, kill, guard, etc.) with retry
+        const MAX_RETRIES = 3;
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          const recheck = room.engine.getState();
+          if (recheck.phase !== state.phase) return;
 
-        if (result.success) {
-          // Add memory
-          agent.addMemory(`Round ${currentState.round}, ${state.phase}: performed ${action.action}`);
+          const action = await agent.decide(aiPlayer, recheck);
+          const result = room.engine.handleAction(action);
 
-          broadcastPlayerViews(io, room);
-          emitPhaseChange(io, room);
-          startPhaseTimer(io, room);
-          // Trigger next AI actions for the new phase
-          await triggerAIActions(io, room);
-          return;
-        } else if (result.message) {
-          // Retry with fallback on invalid response
-          console.warn(`AI ${aiPlayer.name} invalid action: ${result.message}, retrying...`);
+          if (result.success) {
+            agent.addMemory(`Round ${recheck.round}, ${state.phase}: performed ${action.action}`);
+            broadcastPlayerViews(io, room);
+            emitPhaseChange(io, room);
+            startPhaseTimer(io, room);
+            await triggerAIActions(io, room);
+            return;
+          }
+          console.warn(`AI ${aiPlayer.name} attempt ${attempt + 1}/${MAX_RETRIES} failed: ${result.message}`);
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
+        // All retries failed - use skip/abstain as final fallback
+        console.error(`AI ${aiPlayer.name} all retries exhausted, skipping`);
       }
     } catch (err) {
       console.error(`AI ${aiPlayer.name} error:`, err);

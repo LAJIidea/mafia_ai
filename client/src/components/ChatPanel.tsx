@@ -18,7 +18,7 @@ export default function ChatPanel({ messages, onSend, phase }: Props) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const canChat = phase === 'discussion' || phase === 'last_words';
+  const canChat = phase === 'discussion' || phase === 'last_words' || phase === 'pk_speech';
 
   useEffect(() => {
     if (scrollRef.current) {

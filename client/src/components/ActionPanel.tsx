@@ -157,9 +157,10 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
   const shouldShowActions = () => {
     if (phase === 'guard_turn' && myPlayer.role === 'guard') return true;
     if (phase === 'werewolf_turn' && myPlayer.role === 'werewolf') return true;
-  if (phase === 'witch_turn' && myPlayer.role === 'witch') return true;
+    if (phase === 'witch_turn' && myPlayer.role === 'witch') return true;
     if (phase === 'seer_turn' && myPlayer.role === 'seer') return true;
     if (phase === 'voting') return true;
+    if (phase === 'pk_voting') return true;
     if (phase === 'hunter_shoot' && myPlayer.role === 'hunter') return true;
     return false;
   };
@@ -176,6 +177,7 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
      {phase === 'witch_turn' && myPlayer.role === 'witch' && renderWitchActions()}
    {phase === 'seer_turn' && myPlayer.role === 'seer' && renderSeerActions()}
         {phase === 'voting' && renderVotingActions()}
+        {phase === 'pk_voting' && renderVotingActions()}
         {phase === 'hunter_shoot' && myPlayer.role === 'hunter' && renderHunterActions()}
       </div>
     </div>

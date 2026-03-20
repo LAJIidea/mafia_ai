@@ -55,7 +55,7 @@ export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSele
       if (phase === 'guard_turn') return true;
       return false;
     }
-    const selectablePhases = ['guard_turn', 'werewolf_turn', 'witch_turn', 'seer_turn', 'voting', 'hunter_shoot'];
+    const selectablePhases = ['guard_turn', 'werewolf_turn', 'witch_turn', 'seer_turn', 'voting', 'pk_voting', 'hunter_shoot'];
     return selectablePhases.includes(phase);
   };
 

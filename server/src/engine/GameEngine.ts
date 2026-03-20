@@ -154,7 +154,20 @@ export class GameEngine {
       return false;
     }
     const player = this.state.players.find(p => p.id === playerId);
-    if (!player || !player.alive) return false;
+    if (!player) return false;
+
+    // 遗言阶段：只有死者可发言
+    if (this.state.phase === GamePhase.LAST_WORDS) {
+      if (player.alive) return false; // 活人不能在遗言阶段发言
+      // 检查是否是当前发言的死者
+      if (this.state.currentSpeaker) {
+        return this.state.currentSpeaker === playerId;
+      }
+      return this.state.deaths.includes(playerId);
+    }
+
+    // 讨论/PK发言：只有活人可发言
+    if (!player.alive) return false;
 
     if (this.state.currentSpeaker) {
       return this.state.currentSpeaker === playerId;
@@ -261,6 +274,16 @@ export class GameEngine {
       this.state.nightActions = this.emptyNightActions();
       this.state.deaths = [];
       this.transitionTo(GamePhase.GUARD_TURN);
+    }
+    if (phase === GamePhase.LAST_WORDS) {
+      // 遗言阶段：死者发言队列
+      this.state.speakerQueue = [...this.state.deaths];
+      this.state.currentSpeaker = this.state.speakerQueue.shift() || null;
+      if (!this.state.currentSpeaker) {
+        // 无死者，跳过遗言
+        this.transitionTo(GamePhase.DISCUSSION);
+        return;
+      }
     }
     if (phase === GamePhase.DISCUSSION) {
       this.setupSpeakerQueue();
