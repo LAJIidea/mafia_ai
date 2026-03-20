@@ -11,9 +11,11 @@ interface Props {
   onAction: (action: string, targetId?: string) => void;
   witchPotions: { antidote: boolean; poison: boolean };
   gameState: any;
+  pkCandidates?: string[];
+  myPlayerId?: string;
 }
 
-export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction, witchPotions, gameState }: Props) {
+export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction, witchPotions, gameState, pkCandidates = [], myPlayerId = '' }: Props) {
   if (!myPlayer || !myPlayer.alive) {
     return null;
   }
@@ -160,7 +162,7 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
     if (phase === 'witch_turn' && myPlayer.role === 'witch') return true;
     if (phase === 'seer_turn' && myPlayer.role === 'seer') return true;
     if (phase === 'voting') return true;
-    if (phase === 'pk_voting') return true;
+    if (phase === 'pk_voting') return !pkCandidates.includes(myPlayerId); // candidates can't vote
     if (phase === 'hunter_shoot' && myPlayer.role === 'hunter') return true;
     return false;
   };

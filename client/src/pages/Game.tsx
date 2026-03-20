@@ -202,13 +202,21 @@ export default function Game() {
   const canSpeak = (() => {
     if (!myPlayer) return false;
     const phase = gameState.phase;
-    // 遗言阶段：只有死者可发言
+    // 遗言阶段：只有死者可发言，且必须是当前发言者
     if (phase === 'last_words') {
-      return !myPlayer.alive && gameState.deaths.includes(myPlayerId);
+      if (myPlayer.alive || !gameState.deaths.includes(myPlayerId)) return false;
+      return !gameState.currentSpeaker || gameState.currentSpeaker === myPlayerId;
     }
-    // 讨论/PK发言：只有活人可发言
-    if (phase === 'discussion' || phase === 'pk_speech') {
-      return myPlayer.alive;
+    // PK发言：只有PK候选人可发言，且必须是当前发言者
+    if (phase === 'pk_speech') {
+      if (!myPlayer.alive) return false;
+      if (!(gameState.pkCandidates || []).includes(myPlayerId)) return false;
+      return !gameState.currentSpeaker || gameState.currentSpeaker === myPlayerId;
+    }
+    // 讨论：活人可发言，按发言顺序
+    if (phase === 'discussion') {
+      if (!myPlayer.alive) return false;
+      return !gameState.currentSpeaker || gameState.currentSpeaker === myPlayerId;
     }
     return false;
   })();
@@ -236,6 +244,7 @@ export default function Game() {
             onSelectTarget={setSelectedTarget}
             phase={gameState.phase}
             deaths={gameState.deaths}
+            pkCandidates={gameState.pkCandidates || []}
           />
         </div>
 
@@ -270,6 +279,8 @@ export default function Game() {
         onAction={sendAction}
         witchPotions={gameState.witchPotions}
         gameState={gameState}
+        pkCandidates={gameState.pkCandidates || []}
+        myPlayerId={myPlayerId}
       />
 
       {/* 字幕 */}

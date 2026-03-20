@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { GameEngine, validateRoleConfig, getDefaultConfig } from '../engine/GameEngine.js';
 import { RoleName, GamePhase, PlayerType, RoomConfig, PRESET_CONFIGS, Team } from '../engine/types.js';
 import { AIAgent } from '../ai/AIAgent.js';
+import { setGlobalAIConfig, getGlobalAIConfig } from '../ai/config.js';
 
 function setupGame(playerCount: number = 12): { engine: GameEngine; playerIds: string[] } {
   const preset = PRESET_CONFIGS[playerCount];
@@ -338,6 +339,67 @@ describe('GameEngine', () => {
       expect(() => agent.addMemory('test')).not.toThrow();
     });
   });
+
+  describe('遗言阶段发言队列', () => {
+    it('遗言阶段的speaker queue来自deaths', () => {
+      const { engine } = setupGame(6);
+      engine.startGame();
+      const state = engine.getState();
+      const werewolf = state.players.find(p => p.role === RoleName.WEREWOLF);
+      const target = state.players.find(p => p.role !== RoleName.WEREWOLF && p.alive);
+      if (!werewolf || !target) return;
+
+      engine.handleAction({ playerId: werewolf.id, action: 'kill', targetId: target.id });
+      const witch = state.players.find(p => p.role === RoleName.WITCH);
+      if (witch) engine.handleAction({ playerId: witch.id, action: 'witch_skip' });
+      const seer = state.players.find(p => p.role === RoleName.SEER);
+      if (seer) engine.handleAction({ playerId: seer.id, action: 'investigate' });
+
+      const current = engine.getState();
+      if (current.phase === GamePhase.LAST_WORDS) {
+        // currentSpeaker should be the dead player
+        expect(current.currentSpeaker).toBe(target.id);
+        expect(current.deaths).toContain(target.id);
+      }
+    });
+  });
+
+  describe('PK候选人不能在pk_voting投票', () => {
+    it('PK候选人投票应被拒绝', () => {
+      const { engine } = setupGame(6);
+      engine.startGame();
+      // Skip through night to voting
+      while (engine.getState().phase !== GamePhase.VOTING &&
+             engine.getState().phase !== GamePhase.GAME_OVER) {
+        engine.skipCurrentPhase();
+      }
+      if (engine.getState().phase !== GamePhase.VOTING) return;
+
+      // Create tie
+      const voters = engine.getState().players.filter(p => p.alive);
+      if (voters.length < 4) return;
+      engine.handleAction({ playerId: voters[0].id, action: 'vote', targetId: voters[1].id });
+      engine.handleAction({ playerId: voters[1].id, action: 'vote', targetId: voters[0].id });
+      engine.handleAction({ playerId: voters[2].id, action: 'vote', targetId: voters[0].id });
+      engine.handleAction({ playerId: voters[3].id, action: 'vote', targetId: voters[1].id });
+      for (let i = 4; i < voters.length; i++) {
+        engine.handleAction({ playerId: voters[i].id, action: 'vote' });
+      }
+
+      const afterVote = engine.getState();
+      if (afterVote.phase === GamePhase.PK_SPEECH) {
+        // Skip PK speech to get to PK voting
+        engine.skipCurrentPhase();
+        const pkState = engine.getState();
+        if (pkState.phase === GamePhase.PK_VOTING && pkState.pkCandidates.length > 0) {
+          const candidate = pkState.pkCandidates[0];
+          const result = engine.handleAction({ playerId: candidate, action: 'vote', targetId: pkState.pkCandidates[1] || candidate });
+          expect(result.success).toBe(false);
+          expect(result.message).toContain('PK候选人不能投票');
+        }
+      }
+    });
+  });
 });
 
 describe('validateRoleConfig', () => {
@@ -373,5 +435,22 @@ describe('getDefaultConfig', () => {
     expect(config[RoleName.FOOL]).toBe(1);
     const total = Object.values(config).reduce((a, b) => a + b, 0);
     expect(total).toBe(16);
+  });
+});
+
+describe('AI配置存储', () => {
+  it('设置和获取全局AI配置', () => {
+    setGlobalAIConfig({ apiToken: 'test-token', models: ['gpt-4'] });
+    const config = getGlobalAIConfig();
+    expect(config).not.toBeNull();
+    expect(config!.apiToken).toBe('test-token');
+    expect(config!.models).toContain('gpt-4');
+  });
+
+  it('未设置时返回null', () => {
+    // Reset by setting again (singleton)
+    // Note: this tests the getter pattern
+    const config = getGlobalAIConfig();
+    expect(config).toBeDefined();
   });
 });

@@ -15,6 +15,7 @@ interface Props {
   onSelectTarget: (id: string | null) => void;
   phase: string;
   deaths: string[];
+  pkCandidates?: string[];
 }
 
 const ROLE_EMOJI: Record<string, string> = {
@@ -47,15 +48,19 @@ const ROLE_COLOR: Record<string, string> = {
   fool: 'text-yellow-400',
 };
 
-export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSelectTarget, phase, deaths }: Props) {
+export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSelectTarget, phase, deaths, pkCandidates = [] }: Props) {
   const canSelect = (player: Player) => {
     if (!player.alive) return false;
     if (player.id === myPlayerId) {
-      // 守卫可以自守
       if (phase === 'guard_turn') return true;
       return false;
     }
-    const selectablePhases = ['guard_turn', 'werewolf_turn', 'witch_turn', 'seer_turn', 'voting', 'pk_voting', 'hunter_shoot'];
+    // PK投票：只能选择PK候选人，且候选人自己不能投票
+    if (phase === 'pk_voting') {
+      if (pkCandidates.includes(myPlayerId)) return false; // I'm a candidate, can't vote
+      return pkCandidates.includes(player.id); // Only candidates are selectable
+    }
+    const selectablePhases = ['guard_turn', 'werewolf_turn', 'witch_turn', 'seer_turn', 'voting', 'hunter_shoot'];
     return selectablePhases.includes(phase);
   };
 

@@ -320,14 +320,22 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
   if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
 
   // Find AI players who need to act this phase
-  const aiPlayers = state.players.filter(p => p.type === PlayerType.AI && p.alive);
+  let aiPlayers: typeof state.players;
+  if (state.phase === GamePhase.LAST_WORDS) {
+    // In last words, include dead AI players from deaths list
+    aiPlayers = state.players.filter(
+      p => p.type === PlayerType.AI && state.deaths.includes(p.id)
+    );
+  } else {
+    aiPlayers = state.players.filter(p => p.type === PlayerType.AI && p.alive);
+  }
 
   for (const aiPlayer of aiPlayers) {
     const agent = aiManager.getAgent(aiPlayer.id);
     if (!agent) continue;
 
     // Check if this AI should act in this phase
-    const shouldAct = shouldAIAct(aiPlayer, state.phase);
+    const shouldAct = shouldAIAct(aiPlayer, state.phase, state.pkCandidates || []);
     if (!shouldAct) continue;
 
     // Slight delay so actions feel natural
@@ -401,7 +409,7 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
   }
 }
 
-function shouldAIAct(player: { role: RoleName | null; id: string }, phase: GamePhase): boolean {
+function shouldAIAct(player: { role: RoleName | null; id: string }, phase: GamePhase, pkCandidates: string[] = []): boolean {
   switch (phase) {
     case GamePhase.GUARD_TURN:
       return player.role === RoleName.GUARD;
@@ -412,14 +420,18 @@ function shouldAIAct(player: { role: RoleName | null; id: string }, phase: GameP
     case GamePhase.SEER_TURN:
       return player.role === RoleName.SEER;
     case GamePhase.VOTING:
-    case GamePhase.PK_VOTING:
       return true;
+    case GamePhase.PK_VOTING:
+      // PK candidates cannot vote in PK round
+      return !pkCandidates.includes(player.id);
     case GamePhase.HUNTER_SHOOT:
       return player.role === RoleName.HUNTER;
     case GamePhase.DISCUSSION:
     case GamePhase.LAST_WORDS:
-    case GamePhase.PK_SPEECH:
       return true;
+    case GamePhase.PK_SPEECH:
+      // Only PK candidates speak in PK speech
+      return pkCandidates.includes(player.id);
     default:
       return false;
   }
