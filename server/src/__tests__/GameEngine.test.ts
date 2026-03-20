@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { GameEngine, validateRoleConfig, getDefaultConfig } from '../engine/GameEngine.js';
 import { RoleName, GamePhase, PlayerType, RoomConfig, PRESET_CONFIGS, Team } from '../engine/types.js';
 import { AIAgent } from '../ai/AIAgent.js';
-import { setGlobalAIConfig, getGlobalAIConfig } from '../ai/config.js';
+import { setGlobalAIConfig, getGlobalAIConfig, resetGlobalAIConfig } from '../ai/config.js';
 
 function setupGame(playerCount: number = 12): { engine: GameEngine; playerIds: string[] } {
   const preset = PRESET_CONFIGS[playerCount];
@@ -439,7 +439,14 @@ describe('getDefaultConfig', () => {
 });
 
 describe('AI配置存储', () => {
+  it('未设置时返回null', () => {
+    resetGlobalAIConfig();
+    const config = getGlobalAIConfig();
+    expect(config).toBeNull();
+  });
+
   it('设置和获取全局AI配置', () => {
+    resetGlobalAIConfig();
     setGlobalAIConfig({ apiToken: 'test-token', models: ['gpt-4'] });
     const config = getGlobalAIConfig();
     expect(config).not.toBeNull();
@@ -447,10 +454,9 @@ describe('AI配置存储', () => {
     expect(config!.models).toContain('gpt-4');
   });
 
-  it('未设置时返回null', () => {
-    // Reset by setting again (singleton)
-    // Note: this tests the getter pattern
-    const config = getGlobalAIConfig();
-    expect(config).toBeDefined();
+  it('重置后返回null', () => {
+    setGlobalAIConfig({ apiToken: 'x', models: [] });
+    resetGlobalAIConfig();
+    expect(getGlobalAIConfig()).toBeNull();
   });
 });

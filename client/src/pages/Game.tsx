@@ -250,7 +250,7 @@ export default function Game() {
 
         {/* 右侧面板 */}
         <div className="w-80 hidden md:flex flex-col border-l border-wolf/20">
-          <ChatPanel messages={messages} onSend={sendChat} phase={gameState.phase} />
+          <ChatPanel messages={messages} onSend={sendChat} canSpeak={canSpeak} />
         </div>
       </div>
 

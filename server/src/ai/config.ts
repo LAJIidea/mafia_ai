@@ -14,3 +14,7 @@ export function setGlobalAIConfig(config: AIConfigData): void {
 export function getGlobalAIConfig(): AIConfigData | null {
   return globalAIConfig;
 }
+
+export function resetGlobalAIConfig(): void {
+  globalAIConfig = null;
+}

@@ -11,14 +11,12 @@ interface ChatMessage {
 interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => void;
-  phase: string;
+  canSpeak: boolean;
 }
 
-export default function ChatPanel({ messages, onSend, phase }: Props) {
+export default function ChatPanel({ messages, onSend, canSpeak }: Props) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const canChat = phase === 'discussion' || phase === 'last_words' || phase === 'pk_speech';
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -27,7 +25,7 @@ export default function ChatPanel({ messages, onSend, phase }: Props) {
   }, [messages]);
 
   const handleSend = () => {
-    if (!input.trim() || !canChat) return;
+    if (!input.trim() || !canSpeak) return;
     onSend(input.trim());
     setInput('');
   };
@@ -60,13 +58,13 @@ export default function ChatPanel({ messages, onSend, phase }: Props) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
-            disabled={!canChat}
-            placeholder={canChat ? '输入发言...' : '当前不可发言'}
+            disabled={!canSpeak}
+            placeholder={canSpeak ? '输入发言...' : '当前不可发言'}
             className="flex-1 bg-night/80 border border-wolf/30 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-wolf disabled:opacity-50"
           />
           <button
             onClick={handleSend}
-            disabled={!canChat || !input.trim()}
+            disabled={!canSpeak || !input.trim()}
             className="bg-wolf px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-30"
           >
             发送
