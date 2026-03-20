@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:www.langrensha.net)",
+      "Bash(git init && git add -A && git commit -m \"Initial commit: project draft and implementation plan\n\nCo-Authored-By: Claude Opus 4.6 \\(1M context\\) <noreply@anthropic.com>\")"
+    ]
+  }
+}
