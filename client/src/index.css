@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: #0f0e17;
+  color: #ffffff;
+  font-family: 'Noto Sans SC', sans-serif;
+  overflow-x: hidden;
+}
+
+/* 游戏主题滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+::-webkit-scrollbar-thumb {
+  background: #8e44ad;
+  border-radius: 3px;
+}
+
+/* 夜间效果 */
+.night-overlay {
+  background: linear-gradient(180deg, #0a0a1a 0%, #0f0e17 50%, #1a1a2e 100%);
+}
+
+/* 血红高亮 */
+.blood-glow {
+  text-shadow: 0 0 10px rgba(192, 57, 43, 0.8);
+}
+
+/* 玩家卡片 */
+.player-card {
+  @apply relative rounded-xl p-4 backdrop-blur-sm transition-all duration-300;
+  background: rgba(26, 26, 46, 0.8);
+  border: 1px solid rgba(142, 68, 173, 0.3);
+}
+
+.player-card:hover {
+  border-color: rgba(142, 68, 173, 0.6);
+  transform: translateY(-2px);
+}
+
+.player-card.dead {
+  opacity: 0.4;
+  filter: grayscale(0.8);
+}
+
+.player-card.selected {
+  border-color: #c0392b;
+  box-shadow: 0 0 20px rgba(192, 57, 43, 0.4);
+}
+
+/* 阶段指示器 */
+.phase-indicator {
+  @apply text-center py-3 px-6 rounded-full font-bold text-lg;
+  background: linear-gradient(135deg, #8e44ad 0%, #2980b9 100%);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(142, 68, 173, 0.4); }
+  50% { box-shadow: 0 0 25px rgba(142, 68, 173, 0.8); }
+}
+
+/* 字幕样式 */
+.subtitle-bar {
+  @apply fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(10px);
+  max-width: 80vw;
+  font-size: 1.25rem;
+  animation: subtitle-in 0.3s ease-out;
+}
+
+@keyframes subtitle-in {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* 投票动画 */
+.vote-animation {
+  animation: vote-fly 0.5s ease-out;
+}
+
+@keyframes vote-fly {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
