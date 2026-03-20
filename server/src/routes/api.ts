@@ -79,14 +79,28 @@ export function setupRoutes(app: Express, roomManager: RoomManager): void {
     }
   });
 
-  // AI配置相关
-  app.post('/api/ai/config', (req, res) => {
+  // AI配置相关 - 含Token验证
+  app.post('/api/ai/config', async (req, res) => {
     const { apiToken, models } = req.body;
     if (!apiToken) {
       res.status(400).json({ error: '请提供API Token' });
       return;
     }
-    // 存储配置到内存
+
+    // Validate token by making a test call
+    try {
+      const testResponse = await fetch('https://openrouter.ai/api/v1/models', {
+        headers: { 'Authorization': `Bearer ${apiToken}` },
+      });
+      if (!testResponse.ok) {
+        res.status(401).json({ error: 'API Token无效，认证失败' });
+        return;
+      }
+    } catch {
+      res.status(500).json({ error: 'API Token验证请求失败' });
+      return;
+    }
+
     (app as any).__aiConfig = { apiToken, models };
     res.json({ success: true, message: 'AI配置已保存' });
   });

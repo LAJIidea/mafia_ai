@@ -107,6 +107,9 @@ export default function Home() {
 
         {/* 底部链接 */}
         <div className="flex justify-center gap-6 text-sm text-gray-500">
+          <button onClick={() => navigate('/tutorial')} className="hover:text-village transition-colors">
+            新手教程
+          </button>
           <button onClick={() => navigate('/rules')} className="hover:text-wolf transition-colors">
             游戏规则
           </button>

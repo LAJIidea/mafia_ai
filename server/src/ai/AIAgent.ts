@@ -236,6 +236,8 @@ ${this.memory.length > 0 ? this.memory.join('\n') : '暂无'}
       [GamePhase.DISCUSSION]: '讨论阶段',
       [GamePhase.VOTING]: '投票阶段',
       [GamePhase.VOTE_RESULT]: '投票结果',
+      [GamePhase.PK_SPEECH]: 'PK发言',
+      [GamePhase.PK_VOTING]: 'PK投票',
       [GamePhase.HUNTER_SHOOT]: '猎人开枪',
       [GamePhase.GAME_OVER]: '游戏结束',
     };

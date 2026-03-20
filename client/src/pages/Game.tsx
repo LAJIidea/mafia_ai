@@ -37,6 +37,9 @@ interface GameState {
   nightActions: Record<string, unknown>;
   witchPotions: { antidote: boolean; poison: boolean };
   lastGuardTarget: string | null;
+  currentSpeaker: string | null;
+  phaseDeadline: number | null;
+  pkCandidates: string[];
 }
 
 // 阶段对应的TTS主持人语音key
@@ -210,6 +213,8 @@ export default function Game() {
         round={gameState.round}
         myRole={myPlayer?.role || null}
         winner={gameState.winner}
+        phaseDeadline={gameState.phaseDeadline}
+        currentSpeaker={gameState.currentSpeaker}
       />
 
       {/* 主区域 */}

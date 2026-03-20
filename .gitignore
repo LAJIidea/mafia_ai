@@ -4,3 +4,4 @@ dist/
 *.log
 .humanize*
 audio_cache/
+client/tsconfig.tsbuildinfo

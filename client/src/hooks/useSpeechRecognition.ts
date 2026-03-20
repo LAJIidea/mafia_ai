@@ -16,17 +16,17 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-  const isSupported = !!SpeechRecognition;
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const isSupported = !!SpeechRecognitionCtor;
 
   const startListening = useCallback(() => {
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionCtor) {
       setError('浏览器不支持语音识别');
       return;
     }
 
     try {
-      const recognition = new SpeechRecognition();
+      const recognition = new SpeechRecognitionCtor();
       recognition.lang = 'zh-CN';
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -37,7 +37,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
         setError(null);
       };
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
+      recognition.onresult = (event) => {
         let finalTranscript = '';
         let interimTranscript = '';
 
@@ -53,7 +53,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
         setTranscript(prev => prev + finalTranscript + interimTranscript);
       };
 
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      recognition.onerror = (event) => {
         setError(`语音识别错误: ${event.error}`);
         setIsListening(false);
       };
@@ -64,10 +64,10 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
       recognitionRef.current = recognition;
       recognition.start();
-    } catch (err) {
+    } catch {
       setError('语音识别启动失败');
     }
-  }, [SpeechRecognition]);
+  }, [SpeechRecognitionCtor]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {

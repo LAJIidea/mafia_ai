@@ -5,6 +5,7 @@ interface Player {
   alive: boolean;
   type: 'human' | 'ai';
   aiModel?: string;
+  device?: string;
 }
 
 interface Props {
@@ -23,6 +24,7 @@ const ROLE_EMOJI: Record<string, string> = {
   witch: '🧪',
   hunter: '🔫',
   guard: '🛡️',
+  fool: '🤡',
 };
 
 const ROLE_NAME: Record<string, string> = {
@@ -32,6 +34,7 @@ const ROLE_NAME: Record<string, string> = {
   witch: '女巫',
   hunter: '猎人',
   guard: '守卫',
+  fool: '白痴',
 };
 
 const ROLE_COLOR: Record<string, string> = {
@@ -41,6 +44,7 @@ const ROLE_COLOR: Record<string, string> = {
   witch: 'text-witch',
   hunter: 'text-hunter',
   guard: 'text-guard',
+  fool: 'text-yellow-400',
 };
 
 export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSelectTarget, phase, deaths }: Props) {
@@ -96,15 +100,17 @@ export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSele
 
               {/* 玩家头像 - 大号清晰 */}
               <div className="text-5xl mb-3 text-center">
-                {isDead ? '💀' : isMe && player.role ? ROLE_EMOJI[player.role] || '❓' : player.type === 'ai' ? '🤖' : '👤'}
+                {isDead && phase !== 'game_over' ? '💀'
+                  : (isMe || phase === 'game_over') && player.role ? ROLE_EMOJI[player.role] || '❓'
+                  : player.type === 'ai' ? '🤖' : '👤'}
               </div>
 
               {/* 玩家名字 - 清晰可读 */}
               <div className="font-bold text-center text-base truncate">{player.name}</div>
 
-              {/* 角色信息 - 仅自己可见 */}
-              {isMe && player.role && (
-                <div className={`text-sm text-center mt-1 font-bold role-reveal ${ROLE_COLOR[player.role] || 'text-gray-400'}`}>
+              {/* 角色信息 - 自己始终可见，游戏结束时所有人可见 */}
+              {(isMe || phase === 'game_over') && player.role && (
+                <div className={`text-sm text-center mt-1 font-bold ${phase === 'game_over' && !isMe ? 'role-reveal' : ''} ${ROLE_COLOR[player.role] || 'text-gray-400'}`}>
                   {ROLE_NAME[player.role] || '未知'}
                 </div>
               )}

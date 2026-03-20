@@ -68,18 +68,15 @@ export default function Lobby() {
     socket.emit('join_room', {
       roomId,
       playerName: playerName.trim(),
-      playerType: 'human',
       device: isMobile ? 'mobile' : 'desktop',
     });
   };
 
   const handleAddAI = (modelId: string, modelName: string) => {
     if (!roomId) return;
-    socket.emit('join_room', {
+    socket.emit('add_ai', {
       roomId,
       playerName: `AI-${modelName}`,
-      playerType: 'ai',
-      device: 'desktop',
       aiModel: modelId,
     });
   };
@@ -228,6 +225,7 @@ function getRoleName(role: string): string {
     witch: '🧪 女巫',
     hunter: '🔫 猎人',
     guard: '🛡️ 守卫',
+    fool: '🤡 白痴',
   };
   return names[role] || role;
 }

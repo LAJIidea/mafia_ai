@@ -1,20 +1,24 @@
 import { Server as SocketServer, Socket } from 'socket.io';
-import { RoomManager } from './engine/index.js';
-import { PlayerType, ActionRequest, GamePhase } from './engine/types.js';
+import { RoomManager, Room } from './engine/index.js';
+import { PlayerType, GamePhase, RoleName, PHASE_TIMEOUTS } from './engine/types.js';
+import { AIManager, AIAgent } from './ai/AIAgent.js';
 
-// 追踪 socket 与玩家的映射关系
+// Socket → player mapping (only for human players)
 const socketPlayerMap = new Map<string, { roomId: string; playerId: string }>();
+// Room → AI manager
+const roomAIManagers = new Map<string, AIManager>();
+// Room → phase timers
+const roomTimers = new Map<string, NodeJS.Timeout>();
 
 export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager): void {
   io.on('connection', (socket: Socket) => {
     console.log(`客户端连接: ${socket.id}`);
 
+    // Human player joins room
     socket.on('join_room', (data: {
       roomId: string;
       playerName: string;
-      playerType: PlayerType;
       device: 'desktop' | 'mobile';
-      aiModel?: string;
     }) => {
       const room = roomManager.getRoom(data.roomId);
       if (!room) {
@@ -24,9 +28,8 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
 
       const result = room.engine.addPlayer(
         data.playerName,
-        data.playerType,
+        PlayerType.HUMAN,
         data.device,
-        data.aiModel
       );
 
       if (!result.success) {
@@ -38,8 +41,66 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
       socketPlayerMap.set(socket.id, { roomId: data.roomId, playerId });
       socket.join(data.roomId);
 
+      if (!room.hostId) {
+        room.hostId = playerId;
+      }
+
       socket.emit('joined', { playerId, roomId: data.roomId });
       io.to(data.roomId).emit('game_state', room.engine.getState());
+    });
+
+    // Add AI player (separate from human join - does NOT modify socket mapping)
+    socket.on('add_ai', (data: {
+      roomId: string;
+      playerName: string;
+      aiModel: string;
+    }) => {
+      const mapping = socketPlayerMap.get(socket.id);
+      if (!mapping || mapping.roomId !== data.roomId) {
+        socket.emit('error', { message: '你不在该房间中' });
+        return;
+      }
+
+      const room = roomManager.getRoom(data.roomId);
+      if (!room) {
+        socket.emit('error', { message: '房间不存在' });
+        return;
+      }
+
+      // Check AI config
+      const aiManager = getOrCreateAIManager(data.roomId);
+      if (!aiManager.getConfig()) {
+        socket.emit('error', { message: '请先配置AI API Token' });
+        return;
+      }
+
+      const result = room.engine.addPlayer(
+        data.playerName,
+        PlayerType.AI,
+        'desktop',
+        data.aiModel,
+      );
+
+      if (!result.success) {
+        socket.emit('error', { message: result.message });
+        return;
+      }
+
+      // Create AI agent for this player
+      const playerId = result.data?.playerId as string;
+      aiManager.createAgent(playerId, data.aiModel);
+
+      io.to(data.roomId).emit('game_state', room.engine.getState());
+    });
+
+    // Configure AI token
+    socket.on('configure_ai', (data: { apiToken: string }) => {
+      const mapping = socketPlayerMap.get(socket.id);
+      if (!mapping) return;
+
+      const aiManager = getOrCreateAIManager(mapping.roomId);
+      aiManager.setConfig(data.apiToken);
+      socket.emit('ai_configured', { success: true });
     });
 
     socket.on('start_game', () => {
@@ -55,15 +116,13 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
         return;
       }
 
-      // 发送各玩家各自的视角
       broadcastPlayerViews(io, room);
-      io.to(mapping.roomId).emit('phase_change', {
-        phase: room.engine.getState().phase,
-        round: room.engine.getState().round,
-      });
+      emitPhaseChange(io, room);
+      startPhaseTimer(io, room);
+      triggerAIActions(io, room);
     });
 
-    socket.on('game_action', (data: ActionRequest) => {
+    socket.on('game_action', (data: { action: string; targetId?: string }) => {
       const mapping = socketPlayerMap.get(socket.id);
       if (!mapping) return;
 
@@ -71,21 +130,35 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
       if (!room) return;
 
       const result = room.engine.handleAction({
-        ...data,
         playerId: mapping.playerId,
+        action: data.action,
+        targetId: data.targetId,
       });
 
       socket.emit('action_result', result);
 
       if (result.success) {
         broadcastPlayerViews(io, room);
-        const state = room.engine.getState();
-        io.to(mapping.roomId).emit('phase_change', {
-          phase: state.phase,
-          round: state.round,
-          deaths: state.deaths,
-          winner: state.winner,
-        });
+        emitPhaseChange(io, room);
+        startPhaseTimer(io, room);
+        triggerAIActions(io, room);
+      }
+    });
+
+    socket.on('advance_speaker', () => {
+      const mapping = socketPlayerMap.get(socket.id);
+      if (!mapping) return;
+
+      const room = roomManager.getRoom(mapping.roomId);
+      if (!room) return;
+
+      const state = room.engine.getState();
+      if (state.currentSpeaker === mapping.playerId) {
+        room.engine.advanceSpeaker();
+        broadcastPlayerViews(io, room);
+        emitPhaseChange(io, room);
+        startPhaseTimer(io, room);
+        triggerAIActions(io, room);
       }
     });
 
@@ -98,11 +171,9 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
 
       room.engine.skipCurrentPhase();
       broadcastPlayerViews(io, room);
-      const state = room.engine.getState();
-      io.to(mapping.roomId).emit('phase_change', {
-        phase: state.phase,
-        round: state.round,
-      });
+      emitPhaseChange(io, room);
+      startPhaseTimer(io, room);
+      triggerAIActions(io, room);
     });
 
     socket.on('chat_message', (data: { message: string; type: 'voice' | 'text' }) => {
@@ -112,15 +183,15 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
       const room = roomManager.getRoom(mapping.roomId);
       if (!room) return;
 
+      // Check speaking permission
+      if (!room.engine.canSpeak(mapping.playerId)) {
+        socket.emit('error', { message: '未轮到你发言' });
+        return;
+      }
+
       const state = room.engine.getState();
       const player = state.players.find(p => p.id === mapping.playerId);
       if (!player) return;
-
-      // 只允许在讨论阶段和遗言阶段发言
-      if (state.phase !== GamePhase.DISCUSSION && state.phase !== GamePhase.LAST_WORDS) {
-        socket.emit('error', { message: '当前阶段不允许发言' });
-        return;
-      }
 
       io.to(mapping.roomId).emit('chat_message', {
         playerId: mapping.playerId,
@@ -152,9 +223,20 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
   });
 }
 
-function broadcastPlayerViews(io: SocketServer, room: { id: string; engine: { getState: () => any; getPlayerView: (id: string) => any } }): void {
+function getOrCreateAIManager(roomId: string): AIManager {
+  let mgr = roomAIManagers.get(roomId);
+  if (!mgr) {
+    mgr = new AIManager();
+    roomAIManagers.set(roomId, mgr);
+  }
+  return mgr;
+}
+
+function broadcastPlayerViews(io: SocketServer, room: Room): void {
   const state = room.engine.getState();
   for (const player of state.players) {
+    if (player.type === PlayerType.AI) continue;
+
     const sockets = [...(io.sockets.sockets || new Map()).entries()]
       .filter(([socketId]) => {
         const m = socketPlayerMap.get(socketId);
@@ -166,5 +248,146 @@ function broadcastPlayerViews(io: SocketServer, room: { id: string; engine: { ge
     for (const s of sockets) {
       s.emit('game_state', view);
     }
+  }
+}
+
+function emitPhaseChange(io: SocketServer, room: Room): void {
+  const state = room.engine.getState();
+  io.to(room.id).emit('phase_change', {
+    phase: state.phase,
+    round: state.round,
+    deaths: state.deaths,
+    winner: state.winner,
+    currentSpeaker: state.currentSpeaker,
+    phaseDeadline: state.phaseDeadline,
+    pkCandidates: state.pkCandidates,
+  });
+}
+
+function startPhaseTimer(io: SocketServer, room: Room): void {
+  // Clear existing timer
+  const existing = roomTimers.get(room.id);
+  if (existing) clearTimeout(existing);
+
+  const state = room.engine.getState();
+  if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
+
+  const timeout = PHASE_TIMEOUTS[state.phase];
+  if (!timeout) return;
+
+  const timer = setTimeout(() => {
+    const currentState = room.engine.getState();
+    if (currentState.phase === state.phase && currentState.round === state.round) {
+      if (currentState.currentSpeaker) {
+        room.engine.advanceSpeaker();
+      } else {
+        room.engine.skipCurrentPhase();
+      }
+      broadcastPlayerViews(io, room);
+      emitPhaseChange(io, room);
+      startPhaseTimer(io, room);
+      triggerAIActions(io, room);
+    }
+  }, timeout);
+
+  roomTimers.set(room.id, timer);
+}
+
+async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
+  const state = room.engine.getState();
+  const aiManager = roomAIManagers.get(room.id);
+  if (!aiManager || !aiManager.getConfig()) return;
+
+  if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
+
+  // Find AI players who need to act this phase
+  const aiPlayers = state.players.filter(p => p.type === PlayerType.AI && p.alive);
+
+  for (const aiPlayer of aiPlayers) {
+    const agent = aiManager.getAgent(aiPlayer.id);
+    if (!agent) continue;
+
+    // Check if this AI should act in this phase
+    const shouldAct = shouldAIAct(aiPlayer, state.phase);
+    if (!shouldAct) continue;
+
+    // Slight delay so actions feel natural
+    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+
+    // Re-check state hasn't changed
+    const currentState = room.engine.getState();
+    if (currentState.phase !== state.phase) return;
+
+    try {
+      if (state.phase === GamePhase.DISCUSSION ||
+          state.phase === GamePhase.LAST_WORDS ||
+          state.phase === GamePhase.PK_SPEECH) {
+        // AI speaking turn
+        if (currentState.currentSpeaker === aiPlayer.id) {
+          const speech = await agent.generateSpeech(aiPlayer, currentState);
+          io.to(room.id).emit('chat_message', {
+            playerId: aiPlayer.id,
+            playerName: aiPlayer.name,
+            message: speech,
+            type: 'text',
+            timestamp: Date.now(),
+            aiModel: aiPlayer.aiModel,
+          });
+          // Advance to next speaker
+          room.engine.advanceSpeaker();
+          broadcastPlayerViews(io, room);
+          emitPhaseChange(io, room);
+          startPhaseTimer(io, room);
+          // Recursively trigger next AI
+          await triggerAIActions(io, room);
+          return;
+        }
+      } else {
+        // AI action (vote, kill, guard, etc.)
+        const action = await agent.decide(aiPlayer, currentState);
+        const result = room.engine.handleAction(action);
+
+        if (result.success) {
+          // Add memory
+          agent.addMemory(`Round ${currentState.round}, ${state.phase}: performed ${action.action}`);
+
+          broadcastPlayerViews(io, room);
+          emitPhaseChange(io, room);
+          startPhaseTimer(io, room);
+          // Trigger next AI actions for the new phase
+          await triggerAIActions(io, room);
+          return;
+        } else if (result.message) {
+          // Retry with fallback on invalid response
+          console.warn(`AI ${aiPlayer.name} invalid action: ${result.message}, retrying...`);
+        }
+      }
+    } catch (err) {
+      console.error(`AI ${aiPlayer.name} error:`, err);
+    }
+  }
+}
+
+function shouldAIAct(player: { role: RoleName | null; id: string }, phase: GamePhase): boolean {
+  switch (phase) {
+    case GamePhase.GUARD_TURN:
+      return player.role === RoleName.GUARD;
+    case GamePhase.WEREWOLF_TURN:
+      return player.role === RoleName.WEREWOLF;
+    case GamePhase.WITCH_TURN:
+      return player.role === RoleName.WITCH;
+    case GamePhase.SEER_TURN:
+      return player.role === RoleName.SEER;
+    case GamePhase.VOTING:
+    case GamePhase.PK_VOTING:
+      return true;
+    case GamePhase.HUNTER_SHOOT:
+      return player.role === RoleName.HUNTER;
+    case GamePhase.DISCUSSION:
+    case GamePhase.LAST_WORDS:
+    case GamePhase.PK_SPEECH:
+      return true;
+    default:
+      return false;
   }
 }

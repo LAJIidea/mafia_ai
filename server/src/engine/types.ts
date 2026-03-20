@@ -12,6 +12,7 @@ export enum RoleName {
   WITCH = 'witch',
   HUNTER = 'hunter',
   GUARD = 'guard',
+  FOOL = 'fool',
 }
 
 export const ROLE_TEAM: Record<RoleName, Team> = {
@@ -21,6 +22,7 @@ export const ROLE_TEAM: Record<RoleName, Team> = {
   [RoleName.WITCH]: Team.VILLAGER,
   [RoleName.HUNTER]: Team.VILLAGER,
   [RoleName.GUARD]: Team.VILLAGER,
+  [RoleName.FOOL]: Team.VILLAGER,
 };
 
 export const ROLE_DISPLAY_NAME: Record<RoleName, string> = {
@@ -30,6 +32,7 @@ export const ROLE_DISPLAY_NAME: Record<RoleName, string> = {
   [RoleName.WITCH]: '女巫',
   [RoleName.HUNTER]: '猎人',
   [RoleName.GUARD]: '守卫',
+  [RoleName.FOOL]: '白痴',
 };
 
 export enum GamePhase {
@@ -44,6 +47,8 @@ export enum GamePhase {
   DISCUSSION = 'discussion',
   VOTING = 'voting',
   VOTE_RESULT = 'vote_result',
+  PK_SPEECH = 'pk_speech',
+  PK_VOTING = 'pk_voting',
   HUNTER_SHOOT = 'hunter_shoot',
   GAME_OVER = 'game_over',
 }
@@ -62,24 +67,25 @@ export interface Player {
   device: 'desktop' | 'mobile';
   aiModel?: string;
   connected: boolean;
+  foolRevealed: boolean;  // 白痴是否已翻牌（翻牌后失去投票权）
 }
 
 export interface WitchPotions {
-  antidote: boolean;   // 解药是否可用
-  poison: boolean;     // 毒药是否可用
+  antidote: boolean;
+  poison: boolean;
 }
 
 export interface NightActions {
-  guardTarget: string | null;       // 守卫守护的目标
-  werewolfTarget: string | null;    // 狼人杀害的目标
-  witchSave: boolean;               // 女巫是否使用解药
-  witchPoisonTarget: string | null; // 女巫毒药目标
-  seerTarget: string | null;        // 预言家查验目标
+  guardTarget: string | null;
+  werewolfTarget: string | null;
+  witchSave: boolean;
+  witchPoisonTarget: string | null;
+  seerTarget: string | null;
 }
 
 export interface VoteRecord {
   voterId: string;
-  targetId: string | null; // null 表示弃票
+  targetId: string | null;
 }
 
 export interface GameEvent {
@@ -103,20 +109,38 @@ export interface GameState {
   config: RoomConfig;
   nightActions: NightActions;
   witchPotions: WitchPotions;
-  lastGuardTarget: string | null;  // 守卫上一晚守护的目标
+  lastGuardTarget: string | null;
   votes: VoteRecord[];
-  deaths: string[];                // 本轮死亡玩家ID列表
+  deaths: string[];
   events: GameEvent[];
-  hunterCanShoot: boolean;         // 猎人是否可以开枪
+  hunterCanShoot: boolean;
   winner: Team | null;
+  currentSpeaker: string | null;    // 当前发言者ID
+  speakerQueue: string[];           // 发言顺序队列
+  phaseDeadline: number | null;     // 当前阶段截止时间(ms)
+  pkCandidates: string[];           // PK候选人列表
 }
 
 // 预设配置
 export const PRESET_CONFIGS: Record<number, Record<RoleName, number>> = {
-  6:  { werewolf: 2, villager: 2, seer: 1, witch: 1, hunter: 0, guard: 0 },
-  9:  { werewolf: 3, villager: 3, seer: 1, witch: 1, hunter: 1, guard: 0 },
-  12: { werewolf: 4, villager: 4, seer: 1, witch: 1, hunter: 1, guard: 1 },
-  16: { werewolf: 5, villager: 7, seer: 1, witch: 1, hunter: 1, guard: 1 },
+  6:  { werewolf: 2, villager: 2, seer: 1, witch: 1, hunter: 0, guard: 0, fool: 0 },
+  9:  { werewolf: 3, villager: 3, seer: 1, witch: 1, hunter: 1, guard: 0, fool: 0 },
+  12: { werewolf: 4, villager: 4, seer: 1, witch: 1, hunter: 1, guard: 1, fool: 0 },
+  16: { werewolf: 5, villager: 6, seer: 1, witch: 1, hunter: 1, guard: 1, fool: 1 },
+};
+
+// 阶段超时配置（毫秒）
+export const PHASE_TIMEOUTS: Record<string, number> = {
+  [GamePhase.GUARD_TURN]: 30000,
+  [GamePhase.WEREWOLF_TURN]: 45000,
+  [GamePhase.WITCH_TURN]: 30000,
+  [GamePhase.SEER_TURN]: 20000,
+  [GamePhase.LAST_WORDS]: 30000,
+  [GamePhase.DISCUSSION]: 120000,
+  [GamePhase.VOTING]: 30000,
+  [GamePhase.PK_SPEECH]: 60000,
+  [GamePhase.PK_VOTING]: 20000,
+  [GamePhase.HUNTER_SHOOT]: 15000,
 };
 
 export interface ActionRequest {

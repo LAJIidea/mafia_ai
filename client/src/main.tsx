@@ -7,6 +7,7 @@ import Lobby from './pages/Lobby';
 import Game from './pages/Game';
 import Rules from './pages/Rules';
 import Settings from './pages/Settings';
+import Tutorial from './pages/Tutorial';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -17,6 +18,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/game/:roomId" element={<Game />} />
         <Route path="/rules" element={<Rules />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/tutorial" element={<Tutorial />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>
