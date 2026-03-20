@@ -10,6 +10,9 @@ const socketPlayerMap = new Map<string, { roomId: string; playerId: string }>();
 const roomAIManagers = new Map<string, AIManager>();
 // Room → phase timers
 const roomTimers = new Map<string, NodeJS.Timeout>();
+// Configurable AI action delay (for testing)
+let aiDelayMs = () => 1000 + Math.random() * 2000;
+export function setAIDelay(fn: () => number) { aiDelayMs = fn; }
 
 export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager): void {
   io.on('connection', (socket: Socket) => {
@@ -339,7 +342,7 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
     if (!shouldAct) continue;
 
     // Slight delay so actions feel natural
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+    await new Promise(resolve => setTimeout(resolve, aiDelayMs()));
 
     // Re-check state hasn't changed
     const currentState = room.engine.getState();
@@ -409,7 +412,7 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
   }
 }
 
-function shouldAIAct(player: { role: RoleName | null; id: string }, phase: GamePhase, pkCandidates: string[] = []): boolean {
+export function shouldAIAct(player: { role: RoleName | null; id: string }, phase: GamePhase, pkCandidates: string[] = []): boolean {
   switch (phase) {
     case GamePhase.GUARD_TURN:
       return player.role === RoleName.GUARD;
