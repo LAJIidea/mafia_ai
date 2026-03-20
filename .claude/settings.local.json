@@ -3,7 +3,18 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:www.langrensha.net)",
-      "Bash(git init && git add -A && git commit -m \"Initial commit: project draft and implementation plan\n\nCo-Authored-By: Claude Opus 4.6 \\(1M context\\) <noreply@anthropic.com>\")"
+      "Bash(git init && git add -A && git commit -m \"Initial commit: project draft and implementation plan\n\nCo-Authored-By: Claude Opus 4.6 \\(1M context\\) <noreply@anthropic.com>\")",
+      "Bash(cd /home/wab/workspace/mafia/server && npm install 2>&1 | tail -5)",
+      "Bash(cd /home/wab/workspace/mafia/client && npm install 2>&1 | tail -5)",
+      "Bash(npm install 2>&1 | tail -10)",
+      "Bash(npm search edge-tts 2>/dev/null | head -5)",
+      "Bash(npm install 2>&1 | tail -5)",
+      "Bash(npx vitest run 2>&1)",
+      "Bash(git add .gitignore client/index.html client/package.json client/tsconfig.json client/vite.config.ts client/tailwind.config.js client/postcss.config.js client/src/ server/package.json server/tsconfig.json server/vitest.config.ts server/src/ docs/plan.md)",
+      "Bash(git commit -m \"$\\(cat <<'EOF'\nfeat: implement core game engine, multi-platform UI, AI system, and rules\n\n- Game engine with state machine, 6 roles \\(werewolf, villager, seer, witch, hunter, guard\\)\n- Support 6-16 player flexible configuration with preset configs\n- WebSocket real-time communication with room management\n- React frontend with responsive design for desktop/mobile\n- AI agent system via OpenRouter API supporting 6 LLM models\n- Rules page with complete game rules and role descriptions\n- Settings page for OpenRouter API token configuration\n- QR code generation for LAN mobile access\n- 23 unit tests all passing\n\nCo-Authored-By: Claude Opus 4.6 \\(1M context\\) <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git add .gitignore server/src/voice/ server/src/routes/api.ts client/src/pages/Game.tsx client/src/components/PlayerGrid.tsx client/src/components/PhaseDisplay.tsx client/src/components/VoiceInput.tsx client/src/hooks/useSpeechRecognition.ts client/src/hooks/useAudioPlayer.ts client/src/index.css)",
+      "Bash(git commit -m \"$\\(cat <<'EOF'\nfeat: add voice system \\(TTS/STT\\) and enhance UI for video recording\n\n- TTS: Edge TTS integration with 6 distinct AI voice profiles\n- TTS: Narrator voice for game phase announcements\n- STT: Web Speech API integration for human player voice input\n- VoiceInput component with real-time transcription display\n- Auto-play narrator voice on phase transitions\n- Enhanced CSS animations: death, role reveal, selection pulse\n- 16:9 recording safe area, larger fonts, seat numbers\n- Phase-specific background gradients\n- Mobile responsive improvements\n- 23 tests still passing\n\nCo-Authored-By: Claude Opus 4.6 \\(1M context\\) <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git add .gitignore client/package-lock.json server/package-lock.json .claude/settings.local.json && git commit -m \"$\\(cat <<'EOF'\nchore: add lock files and update gitignore\nEOF\n\\)\")"
     ]
   }
 }
