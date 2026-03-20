@@ -4,6 +4,7 @@ interface Player {
   role: string | null;
   alive: boolean;
   type: 'human' | 'ai';
+  aiModel?: string;
 }
 
 interface Props {
@@ -15,80 +16,121 @@ interface Props {
   deaths: string[];
 }
 
+const ROLE_EMOJI: Record<string, string> = {
+  werewolf: '🐺',
+  villager: '👤',
+  seer: '🔮',
+  witch: '🧪',
+  hunter: '🔫',
+  guard: '🛡️',
+};
+
+const ROLE_NAME: Record<string, string> = {
+  werewolf: '狼人',
+  villager: '平民',
+  seer: '预言家',
+  witch: '女巫',
+  hunter: '猎人',
+  guard: '守卫',
+};
+
+const ROLE_COLOR: Record<string, string> = {
+  werewolf: 'text-blood',
+  villager: 'text-gray-300',
+  seer: 'text-seer',
+  witch: 'text-witch',
+  hunter: 'text-hunter',
+  guard: 'text-guard',
+};
+
 export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSelectTarget, phase, deaths }: Props) {
-  const getRoleEmoji = (role: string | null) => {
-    const emojis: Record<string, string> = {
-      werewolf: '🐺',
-      villager: '👤',
-      seer: '🔮',
-      witch: '🧪',
-      hunter: '🔫',
-      guard: '🛡️',
-    };
-    return role ? emojis[role] || '❓' : '❓';
-  };
-
-  const getRoleName = (role: string | null) => {
-    const names: Record<string, string> = {
-    werewolf: '狼人',
-      villager: '平民',
-   seer: '预言家',
-      witch: '女巫',
-      hunter: '猎人',
-      guard: '守卫',
-    };
-    return role ? names[role] || '未知' : '未知';
-  };
-
   const canSelect = (player: Player) => {
     if (!player.alive) return false;
-    if (player.id === myPlayerId) return false;
-
-    // 根据阶段判断是否可选
+    if (player.id === myPlayerId) {
+      // 守卫可以自守
+      if (phase === 'guard_turn') return true;
+      return false;
+    }
     const selectablePhases = ['guard_turn', 'werewolf_turn', 'witch_turn', 'seer_turn', 'voting', 'hunter_shoot'];
     return selectablePhases.includes(phase);
   };
 
+  // 视频录制友好的布局：环形或网格
+  const gridCols = players.length <= 6
+    ? 'grid-cols-3'
+    : players.length <= 9
+      ? 'grid-cols-3 md:grid-cols-3 lg:grid-cols-3'
+      : players.length <= 12
+        ? 'grid-cols-3 md:grid-cols-4 lg:grid-cols-4'
+        : 'grid-cols-4 md:grid-cols-4 lg:grid-cols-4';
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-      {players.map(player => {
-        const isMe = player.id === myPlayerId;
-      const isSelected = selectedTarget === player.id;
-      const isDead = !player.alive;
-        const isNewDeath = deaths.includes(player.id);
-     const selectable = canSelect(player);
+    <div className="recording-safe-area">
+      <div className={`grid ${gridCols} gap-4 justify-items-center`}>
+        {players.map((player, index) => {
+          const isMe = player.id === myPlayerId;
+          const isSelected = selectedTarget === player.id;
+          const isDead = !player.alive;
+          const isNewDeath = deaths.includes(player.id);
+          const selectable = canSelect(player);
 
-     return (
-          <div
-            key={player.id}
-         onClick={() => selectable && onSelectTarget(isSelected ? null : player.id)}
-          className={`player-card ${isDead ? 'dead' : ''} ${isSelected ? 'selected' : ''} ${
-           selectable ? 'cursor-pointer' : ''
-            } ${isNewDeath ? 'animate-pulse' : ''}`}
-          >
-        {/* 玩家头像 */}
-            <div className="text-5xl mb-2 text-center">
-              {isMe && player.role ? getRoleEmoji(player.role) : player.type === 'ai' ? '🤖' : '👤'}
+          return (
+            <div
+              key={player.id}
+              onClick={() => selectable && onSelectTarget(isSelected ? null : player.id)}
+              className={`player-card w-full ${isDead ? 'dead' : ''} ${isSelected ? 'selected' : ''} ${
+                selectable ? 'cursor-pointer hover:scale-105' : ''
+              } ${isNewDeath ? 'death-animation' : ''}`}
+            >
+              {/* 座位号 */}
+              <div className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-wolf/80 flex items-center justify-center text-xs font-bold">
+                {index + 1}
+              </div>
+
+              {/* 我的标记 */}
+              {isMe && (
+                <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-guard flex items-center justify-center text-xs">
+                  ⭐
+                </div>
+              )}
+
+              {/* 玩家头像 - 大号清晰 */}
+              <div className="text-5xl mb-3 text-center">
+                {isDead ? '💀' : isMe && player.role ? ROLE_EMOJI[player.role] || '❓' : player.type === 'ai' ? '🤖' : '👤'}
+              </div>
+
+              {/* 玩家名字 - 清晰可读 */}
+              <div className="font-bold text-center text-base truncate">{player.name}</div>
+
+              {/* 角色信息 - 仅自己可见 */}
+              {isMe && player.role && (
+                <div className={`text-sm text-center mt-1 font-bold role-reveal ${ROLE_COLOR[player.role] || 'text-gray-400'}`}>
+                  {ROLE_NAME[player.role] || '未知'}
+                </div>
+              )}
+
+              {/* AI模型标记 */}
+              {player.type === 'ai' && player.aiModel && (
+                <div className="text-xs text-center text-gray-500 mt-1 truncate">
+                  {player.aiModel.split('/').pop()}
+                </div>
+              )}
+
+              {/* 状态标记 */}
+              {isDead && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-6xl opacity-30">✕</div>
+                </div>
+              )}
+
+              {/* 类型标识 */}
+              <div className="absolute bottom-1 right-1 text-xs opacity-50">
+                {player.type === 'ai' ? '🤖' : player.device === 'mobile' ? '📱' : '💻'}
+              </div>
             </div>
-
-            {/* 玩家名字 */}
-        <div className="font-bold text-center truncate">{player.name}</div>
-
-            {/* 角色信息（仅自己可见） */}
-            {isMe && player.role && (
-              <div className="text-xs text-center text-wolf mt-1">{getRoleName(player.role)}</div>
-            )}
-
-          {/* 状态标记 */}
-          {isDead && (
-              <div className="absolute top-2 right-2 text-2xl">💀</div>
-            )}
-            {isMe && (
-              <div className="absolute top-2 left-2 text-xl">⭐</div>
-            )}
-       </div>
-      );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

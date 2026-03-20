@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { getSocket } from '../utils/socket';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import PlayerGrid from '../components/PlayerGrid';
 import ActionPanel from '../components/ActionPanel';
 import ChatPanel from '../components/ChatPanel';
 import PhaseDisplay from '../components/PhaseDisplay';
 import Subtitle from '../components/Subtitle';
+import VoiceInput from '../components/VoiceInput';
 
 interface Player {
   id: string;
@@ -37,6 +39,20 @@ interface GameState {
   lastGuardTarget: string | null;
 }
 
+// 阶段对应的TTS主持人语音key
+const PHASE_NARRATOR_KEY: Record<string, string> = {
+  night_start: 'night_start',
+  guard_turn: 'guard_turn',
+  werewolf_turn: 'werewolf_turn',
+  witch_turn: 'witch_turn',
+  seer_turn: 'seer_turn',
+  dawn: 'dawn',
+  last_words: 'last_words',
+  discussion: 'discussion',
+  voting: 'voting',
+  hunter_shoot: 'hunter_shoot',
+};
+
 export default function Game() {
   const { roomId } = useParams<{ roomId: string }>();
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -44,11 +60,45 @@ export default function Game() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [subtitle, setSubtitle] = useState<string>('');
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const lastPhaseRef = useRef<string>('');
 
   const socket = getSocket();
+  const { playAudio } = useAudioPlayer();
+
+  // 播放主持人语音
+  const playNarratorVoice = useCallback(async (lineKey: string) => {
+    if (!voiceEnabled) return;
+    try {
+      const response = await fetch(`/api/tts/narrator/${lineKey}`);
+      if (response.ok) {
+        const audioBuffer = await response.arrayBuffer();
+        await playAudio(audioBuffer);
+      }
+    } catch {
+      // 语音播放失败时静默处理，字幕仍会显示
+    }
+  }, [voiceEnabled, playAudio]);
+
+  // 播放AI发言语音
+  const playAISpeech = useCallback(async (text: string, aiModel: string) => {
+    if (!voiceEnabled) return;
+    try {
+      const response = await fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, aiModel }),
+      });
+      if (response.ok) {
+        const audioBuffer = await response.arrayBuffer();
+        await playAudio(audioBuffer);
+      }
+    } catch {
+      // 静默处理
+    }
+  }, [voiceEnabled, playAudio]);
 
   useEffect(() => {
-    // 恢复 playerId
     const stored = sessionStorage.getItem(`playerId_${roomId}`);
     if (stored) setMyPlayerId(stored);
 
@@ -64,10 +114,29 @@ export default function Game() {
     socket.on('phase_change', (data: { phase: string; round: number; deaths?: string[]; winner?: string }) => {
       setSelectedTarget(null);
       showPhaseSubtitle(data.phase, data.deaths, data.winner);
+
+      // 播放主持人语音
+      if (data.phase !== lastPhaseRef.current) {
+        lastPhaseRef.current = data.phase;
+        const narratorKey = data.phase === 'game_over'
+          ? (data.winner === 'werewolf' ? 'game_over_werewolf' : 'game_over_villager')
+          : PHASE_NARRATOR_KEY[data.phase];
+        if (narratorKey) {
+          playNarratorVoice(narratorKey);
+        }
+      }
     });
 
     socket.on('chat_message', (msg: ChatMessage) => {
       setMessages(prev => [...prev, msg]);
+      // 如果是AI发言，播放TTS
+      if (msg.type === 'text') {
+        // 查找AI玩家信息
+        const aiPlayer = gameState?.players.find(p => p.id === msg.playerId && p.type === 'ai');
+        if (aiPlayer?.aiModel) {
+          playAISpeech(msg.message, aiPlayer.aiModel);
+        }
+      }
     });
 
     socket.on('action_result', (result: { success: boolean; message?: string; data?: Record<string, unknown> }) => {
@@ -84,7 +153,7 @@ export default function Game() {
       socket.off('chat_message');
       socket.off('action_result');
     };
-  }, [socket, roomId]);
+  }, [socket, roomId, playNarratorVoice, playAISpeech]);
 
   const myPlayer = gameState?.players.find(p => p.id === myPlayerId);
 
@@ -96,7 +165,11 @@ export default function Game() {
     socket.emit('chat_message', { message, type: 'text' });
   }, [socket]);
 
-  const showPhaseSubtitle = (phase: string, deaths?: string[], winner?: string) => {
+  const sendVoiceChat = useCallback((text: string) => {
+    socket.emit('chat_message', { message: text, type: 'voice' });
+  }, [socket]);
+
+  const showPhaseSubtitle = (phase: string, _deaths?: string[], winner?: string) => {
     const phaseTexts: Record<string, string> = {
       night_start: '🌙 天黑请闭眼',
       guard_turn: '🛡️ 守卫请睁眼',
@@ -126,6 +199,9 @@ export default function Game() {
     );
   }
 
+  const canSpeak = (gameState.phase === 'discussion' || gameState.phase === 'last_words')
+    && myPlayer?.alive === true;
+
   return (
     <div className="h-screen night-overlay flex flex-col overflow-hidden">
       {/* 顶部状态栏 */}
@@ -153,6 +229,23 @@ export default function Game() {
         {/* 右侧面板 */}
         <div className="w-80 hidden md:flex flex-col border-l border-wolf/20">
           <ChatPanel messages={messages} onSend={sendChat} phase={gameState.phase} />
+        </div>
+      </div>
+
+      {/* 语音输入 */}
+      <div className="px-6 py-2">
+        <div className="max-w-7xl mx-auto flex items-center gap-4">
+          <div className="flex-1">
+            <VoiceInput onSendVoice={sendVoiceChat} canSpeak={canSpeak} />
+          </div>
+          <button
+            onClick={() => setVoiceEnabled(!voiceEnabled)}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              voiceEnabled ? 'bg-wolf/60 text-white' : 'bg-gray-700 text-gray-400'
+            }`}
+          >
+            {voiceEnabled ? '🔊 语音开' : '🔇 语音关'}
+          </button>
         </div>
       </div>
 

@@ -3,6 +3,9 @@ import { RoomManager } from '../engine/index.js';
 import { RoleName, PlayerType, PRESET_CONFIGS, getDefaultConfig } from '../engine/index.js';
 import { networkInterfaces } from 'os';
 import QRCode from 'qrcode';
+import { TTSService, VOICE_PROFILES, NARRATOR_LINES } from '../voice/TTSService.js';
+
+const ttsService = new TTSService();
 
 export function setupRoutes(app: Express, roomManager: RoomManager): void {
   // 获取房间列表
@@ -106,6 +109,44 @@ export function setupRoutes(app: Express, roomManager: RoomManager): void {
       { id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen 2.5', provider: 'Alibaba' },
       { id: 'moonshot/moonshot-v1-128k', name: 'Kimi', provider: 'Moonshot' },
     ]);
+  });
+
+  // TTS 语音合成 - 主持人语音
+  app.get('/api/tts/narrator/:lineKey', async (req, res) => {
+    try {
+      const { lineKey } = req.params;
+      if (!NARRATOR_LINES[lineKey]) {
+        res.status(400).json({ error: '无效的语音行' });
+        return;
+      }
+      const audio = await ttsService.synthesizeNarrator(lineKey);
+      res.set('Content-Type', 'audio/mpeg');
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.send(audio);
+    } catch (err) {
+      res.status(500).json({ error: 'TTS合成失败: ' + (err as Error).message });
+    }
+  });
+
+  // TTS 语音合成 - AI玩家发言
+  app.post('/api/tts/speak', async (req, res) => {
+    try {
+      const { text, aiModel } = req.body;
+      if (!text) {
+        res.status(400).json({ error: '请提供文本' });
+        return;
+      }
+      const audio = await ttsService.synthesizePlayerSpeech(text, aiModel || '');
+      res.set('Content-Type', 'audio/mpeg');
+      res.send(audio);
+    } catch (err) {
+      res.status(500).json({ error: 'TTS合成失败: ' + (err as Error).message });
+    }
+  });
+
+  // 获取音色列表
+  app.get('/api/tts/voices', (_req, res) => {
+    res.json(ttsService.getVoiceProfiles());
   });
 }
 

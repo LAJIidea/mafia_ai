@@ -32,48 +32,71 @@ body {
   text-shadow: 0 0 10px rgba(192, 57, 43, 0.8);
 }
 
-/* 玩家卡片 */
+/* 玩家卡片 - 视频录制友好 */
 .player-card {
   @apply relative rounded-xl p-4 backdrop-blur-sm transition-all duration-300;
   background: rgba(26, 26, 46, 0.8);
-  border: 1px solid rgba(142, 68, 173, 0.3);
+  border: 2px solid rgba(142, 68, 173, 0.3);
+  min-width: 120px;
 }
 
 .player-card:hover {
   border-color: rgba(142, 68, 173, 0.6);
   transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(142, 68, 173, 0.2);
 }
 
 .player-card.dead {
-  opacity: 0.4;
-  filter: grayscale(0.8);
+  opacity: 0.35;
+  filter: grayscale(0.9);
+  border-color: rgba(100, 100, 100, 0.3);
+}
+
+.player-card.dead::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 45%, rgba(192, 57, 43, 0.3) 50%, transparent 55%);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .player-card.selected {
   border-color: #c0392b;
-  box-shadow: 0 0 20px rgba(192, 57, 43, 0.4);
+  box-shadow: 0 0 25px rgba(192, 57, 43, 0.5), inset 0 0 15px rgba(192, 57, 43, 0.1);
+  animation: selected-pulse 1.5s ease-in-out infinite;
 }
 
-/* 阶段指示器 */
+@keyframes selected-pulse {
+  0%, 100% { box-shadow: 0 0 25px rgba(192, 57, 43, 0.5); }
+  50% { box-shadow: 0 0 35px rgba(192, 57, 43, 0.8); }
+}
+
+/* 阶段指示器 - 大号清晰可见 */
 .phase-indicator {
-  @apply text-center py-3 px-6 rounded-full font-bold text-lg;
+  @apply text-center py-3 px-8 rounded-full font-black text-xl tracking-wider;
   background: linear-gradient(135deg, #8e44ad 0%, #2980b9 100%);
   animation: pulse-glow 2s ease-in-out infinite;
+  letter-spacing: 0.05em;
 }
 
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 10px rgba(142, 68, 173, 0.4); }
-  50% { box-shadow: 0 0 25px rgba(142, 68, 173, 0.8); }
+  50% { box-shadow: 0 0 30px rgba(142, 68, 173, 0.8); }
 }
 
-/* 字幕样式 */
+/* 字幕样式 - 视频录制核心UI */
 .subtitle-bar {
-  @apply fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(10px);
+  @apply fixed bottom-8 left-1/2 -translate-x-1/2 px-10 py-5 rounded-2xl;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(15px);
   max-width: 80vw;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(142, 68, 173, 0.3);
   animation: subtitle-in 0.3s ease-out;
+  z-index: 100;
 }
 
 @keyframes subtitle-in {
@@ -89,4 +112,72 @@ body {
 @keyframes vote-fly {
   from { opacity: 0; transform: scale(0.5); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* 死亡动画 */
+.death-animation {
+  animation: death-fade 1s ease-out;
+}
+
+@keyframes death-fade {
+  0% { opacity: 1; filter: none; }
+  50% { filter: brightness(2) saturate(0); }
+  100% { opacity: 0.35; filter: grayscale(0.9); }
+}
+
+/* 角色揭示动画 */
+.role-reveal {
+  animation: reveal-bounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes reveal-bounce {
+  from { transform: scale(0) rotate(-15deg); opacity: 0; }
+  to { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* 夜晚转场 */
+.night-transition {
+  animation: night-fade 1.5s ease-in-out;
+}
+
+@keyframes night-fade {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(0.2); }
+  100% { filter: brightness(1); }
+}
+
+/* 语音指示器 */
+.speaking-indicator {
+  animation: speaking-ring 1s ease-in-out infinite;
+}
+
+@keyframes speaking-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.7); }
+  50% { box-shadow: 0 0 0 8px rgba(39, 174, 96, 0); }
+}
+
+/* 录制安全区域指示 (16:9) */
+.recording-safe-area {
+  max-width: 1920px;
+  margin: 0 auto;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .player-card {
+    min-width: 80px;
+    padding: 8px;
+  }
+
+  .subtitle-bar {
+    font-size: 1rem;
+    padding: 12px 20px;
+    bottom: 16px;
+    max-width: 90vw;
+  }
+
+  .phase-indicator {
+    font-size: 1rem;
+    padding: 8px 16px;
+  }
 }
