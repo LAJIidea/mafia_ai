@@ -3,6 +3,9 @@ import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import cors from 'cors';
 import { networkInterfaces } from 'os';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 import { RoomManager } from './engine/index.js';
 import { setupSocketHandlers } from './socket.js';
 import { setupRoutes } from './routes/api.js';
@@ -26,6 +29,16 @@ setupRoutes(app, roomManager);
 
 // WebSocket
 setupSocketHandlers(io, roomManager);
+
+// Serve client static files (production)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const clientDist = join(__dirname, '../../client/dist');
+if (existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get('*', (_req, res) => {
+    res.sendFile(join(clientDist, 'index.html'));
+  });
+}
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
