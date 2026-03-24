@@ -8,11 +8,12 @@ import { setupRoutes } from '../routes/api.js';
 import { setupSocketHandlers, shouldAIAct, setAIDelay } from '../socket.js';
 import { setGlobalAIConfig, resetGlobalAIConfig, getGlobalAIConfig } from '../ai/config.js';
 import { AIAgent } from '../ai/AIAgent.js';
-import { RoleName, GamePhase, PHASE_TIMEOUTS } from '../engine/types.js';
+import { RoleName, GamePhase, PHASE_TIMEOUTS, PHASE_MIN_DURATION } from '../engine/types.js';
 
 let httpServer: HttpServer, io: SocketServer, port: number, rm: RoomManager;
 const origFetch = globalThis.fetch;
 const savedTimeouts = { ...PHASE_TIMEOUTS };
+const savedMinDuration = { ...PHASE_MIN_DURATION };
 
 function mockFetch(valid = true) {
   globalThis.fetch = vi.fn(async (url: any) => {
@@ -43,6 +44,9 @@ afterEach(() => {
   resetGlobalAIConfig(); vi.restoreAllMocks(); globalThis.fetch = origFetch;
   setAIDelay(() => 1000 + Math.random() * 2000);
   Object.assign(PHASE_TIMEOUTS, savedTimeouts);
+  Object.assign(PHASE_MIN_DURATION, savedMinDuration);
+  // Clear min durations for tests
+  Object.keys(PHASE_MIN_DURATION).forEach(k => { PHASE_MIN_DURATION[k] = 0; });
 });
 
 function conn() { return ioClient(`http://127.0.0.1:${port}`, { transports: ['websocket'] }); }
@@ -121,6 +125,7 @@ describe('LAST_WORDS (socket边界)', () => {
     setGlobalAIConfig({ apiToken: 'test', models: ['m'] });
     setAIDelay(() => 10);
     Object.keys(PHASE_TIMEOUTS).forEach(k => { PHASE_TIMEOUTS[k] = 200; });
+    Object.keys(PHASE_MIN_DURATION).forEach(k => { PHASE_MIN_DURATION[k] = 0; });
     PHASE_TIMEOUTS['dawn'] = 200;
     vi.spyOn(AIAgent.prototype, 'decide').mockImplementation(async (p: any, gs: any) => {
       const t = gs.players.filter((x: any) => x.alive && x.id !== p.id);
@@ -195,6 +200,7 @@ describe('PK_VOTING (socket边界)', () => {
     setGlobalAIConfig({ apiToken: 'test', models: ['m'] });
     setAIDelay(() => 10);
     Object.keys(PHASE_TIMEOUTS).forEach(k => { PHASE_TIMEOUTS[k] = 200; });
+    Object.keys(PHASE_MIN_DURATION).forEach(k => { PHASE_MIN_DURATION[k] = 0; });
     PHASE_TIMEOUTS['dawn'] = 200;
     vi.spyOn(AIAgent.prototype, 'decide').mockImplementation(async (p: any, gs: any) => {
       const t = gs.players.filter((x: any) => x.alive && x.id !== p.id);

@@ -221,6 +221,23 @@ export default function Game() {
     return false;
   })();
 
+  // 当前是否是我的发言轮次
+  const isMyTurn = gameState.currentSpeaker === myPlayerId;
+  const isSpeakPhase = ['discussion', 'last_words', 'pk_speech'].includes(gameState.phase);
+
+  const handleEndSpeech = useCallback(() => {
+    socket.emit('advance_speaker');
+  }, [socket]);
+
+  const ROLE_EMOJI: Record<string, string> = {
+    werewolf: '🐺', villager: '👤', seer: '🔮', witch: '🧪',
+    hunter: '🔫', guard: '🛡️', fool: '🤡',
+  };
+  const ROLE_NAME: Record<string, string> = {
+    werewolf: '狼人', villager: '平民', seer: '预言家', witch: '女巫',
+    hunter: '猎人', guard: '守卫', fool: '白痴',
+  };
+
   return (
     <div className="h-screen night-overlay flex flex-col overflow-hidden">
       {/* 顶部状态栏 */}
@@ -232,6 +249,41 @@ export default function Game() {
         phaseDeadline={gameState.phaseDeadline}
         currentSpeaker={gameState.currentSpeaker}
       />
+
+      {/* 身份提示条 */}
+      {myPlayer?.role && !gameState.winner && (
+        <div className="bg-gradient-to-r from-wolf/30 to-purple-900/30 border-b border-wolf/20 px-6 py-2">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{ROLE_EMOJI[myPlayer.role] || '❓'}</span>
+              <div>
+                <div className="text-xs text-gray-400">你的身份</div>
+                <div className="text-lg font-bold text-wolf">{ROLE_NAME[myPlayer.role] || '未知'}</div>
+              </div>
+            </div>
+            {/* 当前发言者提示 + 结束发言按钮 */}
+            {isSpeakPhase && (
+              <div className="flex items-center gap-3">
+                {isMyTurn ? (
+                  <>
+                    <span className="text-sm text-village animate-pulse">轮到你发言</span>
+                    <button
+                      onClick={handleEndSpeech}
+                      className="bg-wolf px-4 py-2 rounded-lg text-sm font-bold hover:bg-wolf/80 transition-all"
+                    >
+                      结束发言 →
+                    </button>
+                  </>
+                ) : gameState.currentSpeaker ? (
+                  <span className="text-sm text-gray-400">
+                    {gameState.players.find(p => p.id === gameState.currentSpeaker)?.name || ''}正在发言...
+                  </span>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 主区域 */}
       <div className="flex-1 flex overflow-hidden">

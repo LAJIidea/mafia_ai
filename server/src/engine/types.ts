@@ -132,15 +132,23 @@ export const PRESET_CONFIGS: Record<number, Record<RoleName, number>> = {
 // 阶段超时配置（毫秒）
 export const PHASE_TIMEOUTS: Record<string, number> = {
   [GamePhase.GUARD_TURN]: 30000,
-  [GamePhase.WEREWOLF_TURN]: 45000,
+  [GamePhase.WEREWOLF_TURN]: 30000,
   [GamePhase.WITCH_TURN]: 30000,
-  [GamePhase.SEER_TURN]: 20000,
-  [GamePhase.LAST_WORDS]: 30000,
-  [GamePhase.DISCUSSION]: 120000,
+  [GamePhase.SEER_TURN]: 30000,
+  [GamePhase.LAST_WORDS]: 60000,
+  [GamePhase.DISCUSSION]: 180000,
   [GamePhase.VOTING]: 30000,
   [GamePhase.PK_SPEECH]: 60000,
   [GamePhase.PK_VOTING]: 20000,
   [GamePhase.HUNTER_SHOOT]: 15000,
+};
+
+// 夜间阶段最低持续时间（毫秒）- 防止AI行动过快暴露身份
+export const PHASE_MIN_DURATION: Record<string, number> = {
+  [GamePhase.GUARD_TURN]: 15000,
+  [GamePhase.WEREWOLF_TURN]: 15000,
+  [GamePhase.WITCH_TURN]: 15000,
+  [GamePhase.SEER_TURN]: 15000,
 };
 
 export interface ActionRequest {

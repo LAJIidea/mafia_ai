@@ -1,6 +1,6 @@
 import { Server as SocketServer, Socket } from 'socket.io';
 import { RoomManager, Room } from './engine/index.js';
-import { PlayerType, GamePhase, RoleName, PHASE_TIMEOUTS } from './engine/types.js';
+import { PlayerType, GamePhase, RoleName, PHASE_TIMEOUTS, PHASE_MIN_DURATION } from './engine/types.js';
 import { AIManager } from './ai/AIAgent.js';
 import { getGlobalAIConfig } from './ai/config.js';
 
@@ -10,6 +10,8 @@ const socketPlayerMap = new Map<string, { roomId: string; playerId: string }>();
 const roomAIManagers = new Map<string, AIManager>();
 // Room → phase timers
 const roomTimers = new Map<string, NodeJS.Timeout>();
+// Room → phase start timestamp (for min duration enforcement)
+const roomPhaseStart = new Map<string, number>();
 // Configurable AI action delay (for testing)
 let aiDelayMs = () => 1000 + Math.random() * 2000;
 export function setAIDelay(fn: () => number) { aiDelayMs = fn; }
@@ -287,12 +289,16 @@ function emitPhaseChange(io: SocketServer, room: Room): void {
 }
 
 function startPhaseTimer(io: SocketServer, room: Room): void {
-  // Clear existing timer
   const existing = roomTimers.get(room.id);
   if (existing) clearTimeout(existing);
 
   const state = room.engine.getState();
   if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
+
+  // Record phase start time
+  if (!roomPhaseStart.has(room.id)) {
+    roomPhaseStart.set(room.id, Date.now());
+  }
 
   const timeout = PHASE_TIMEOUTS[state.phase];
   if (!timeout) return;
@@ -305,6 +311,7 @@ function startPhaseTimer(io: SocketServer, room: Room): void {
       } else {
         room.engine.skipCurrentPhase();
       }
+      roomPhaseStart.delete(room.id);
       broadcastPlayerViews(io, room);
       emitPhaseChange(io, room);
       startPhaseTimer(io, room);
@@ -394,6 +401,19 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
 
           if (result.success) {
             agent.addMemory(`Round ${recheck.round}, ${state.phase}: performed ${action.action}`);
+
+            // Enforce minimum phase duration for night phases
+            const minDuration = PHASE_MIN_DURATION[state.phase];
+            if (minDuration) {
+              const phaseStart = roomPhaseStart.get(room.id) || Date.now();
+              const elapsed = Date.now() - phaseStart;
+              const remaining = minDuration - elapsed;
+              if (remaining > 0) {
+                await new Promise(resolve => setTimeout(resolve, remaining));
+              }
+            }
+            roomPhaseStart.delete(room.id);
+
             broadcastPlayerViews(io, room);
             emitPhaseChange(io, room);
             startPhaseTimer(io, room);
