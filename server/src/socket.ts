@@ -12,6 +12,12 @@ const roomAIManagers = new Map<string, AIManager>();
 const roomTimers = new Map<string, NodeJS.Timeout>();
 // Room → phase start timestamp (for min duration enforcement)
 const roomPhaseStart = new Map<string, number>();
+// Room → AI action mutex (prevent concurrent triggerAIActions)
+const roomAILock = new Map<string, boolean>();
+// Room → last recorded phase key for acted tracking
+const roomLastPhaseKey = new Map<string, string>();
+// Room → set of player IDs that already acted in current phase
+const roomActedPlayers = new Map<string, Set<string>>();
 // Configurable AI action delay (for testing)
 let aiDelayMs = () => 1000 + Math.random() * 2000;
 export function setAIDelay(fn: () => number) { aiDelayMs = fn; }
@@ -295,9 +301,12 @@ function startPhaseTimer(io: SocketServer, room: Room): void {
   const state = room.engine.getState();
   if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
 
-  // Record phase start time
-  if (!roomPhaseStart.has(room.id)) {
+  // Reset acted players only when phase/round actually changes
+  const phaseKey = `${state.phase}-${state.round}`;
+  if (roomLastPhaseKey.get(room.id) !== phaseKey) {
+    roomLastPhaseKey.set(room.id, phaseKey);
     roomPhaseStart.set(room.id, Date.now());
+    roomActedPlayers.set(room.id, new Set());
   }
 
   const timeout = PHASE_TIMEOUTS[state.phase];
@@ -312,6 +321,7 @@ function startPhaseTimer(io: SocketServer, room: Room): void {
         room.engine.skipCurrentPhase();
       }
       roomPhaseStart.delete(room.id);
+      roomAILock.set(room.id, false); // Force release mutex on timeout
       broadcastPlayerViews(io, room);
       emitPhaseChange(io, room);
       startPhaseTimer(io, room);
@@ -323,6 +333,18 @@ function startPhaseTimer(io: SocketServer, room: Room): void {
 }
 
 async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
+  // Mutex: prevent concurrent execution for same room
+  if (roomAILock.get(room.id)) return;
+  roomAILock.set(room.id, true);
+
+  try {
+    await doTriggerAIActions(io, room);
+  } finally {
+    roomAILock.set(room.id, false);
+  }
+}
+
+async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
   const state = room.engine.getState();
   const aiManager = roomAIManagers.get(room.id);
   if (!aiManager || !aiManager.getConfig()) return;
@@ -343,6 +365,10 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
   for (const aiPlayer of aiPlayers) {
     const agent = aiManager.getAgent(aiPlayer.id);
     if (!agent) continue;
+
+    // Skip if this AI already acted in this phase
+    const actedSet = roomActedPlayers.get(room.id);
+    if (actedSet?.has(aiPlayer.id)) continue;
 
     // Check if this AI should act in this phase
     const shouldAct = shouldAIAct(aiPlayer, state.phase, state.pkCandidates || []);
@@ -380,13 +406,14 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
             }
           }
           agent.addMemory(`我发言: "${speech}"`);
+          actedSet?.add(aiPlayer.id);
           // Advance to next speaker
           room.engine.advanceSpeaker();
           broadcastPlayerViews(io, room);
           emitPhaseChange(io, room);
           startPhaseTimer(io, room);
           // Recursively trigger next AI
-          await triggerAIActions(io, room);
+          await doTriggerAIActions(io, room);
           return;
         }
       } else {
@@ -401,6 +428,7 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
 
           if (result.success) {
             agent.addMemory(`Round ${recheck.round}, ${state.phase}: performed ${action.action}`);
+            actedSet?.add(aiPlayer.id);
 
             // Enforce minimum phase duration for night phases
             const minDuration = PHASE_MIN_DURATION[state.phase];
@@ -412,12 +440,12 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
                 await new Promise(resolve => setTimeout(resolve, remaining));
               }
             }
-            roomPhaseStart.delete(room.id);
+            // phaseStart kept for acted tracking
 
             broadcastPlayerViews(io, room);
             emitPhaseChange(io, room);
             startPhaseTimer(io, room);
-            await triggerAIActions(io, room);
+            await doTriggerAIActions(io, room);
             return;
           }
           console.warn(`AI ${aiPlayer.name} attempt ${attempt + 1}/${MAX_RETRIES} failed: ${result.message}`);
@@ -444,11 +472,11 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
               const remaining = minDuration - (Date.now() - phaseStart);
               if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining));
             }
-            roomPhaseStart.delete(room.id);
+            // phaseStart kept for acted tracking
             broadcastPlayerViews(io, room);
             emitPhaseChange(io, room);
             startPhaseTimer(io, room);
-            await triggerAIActions(io, room);
+            await doTriggerAIActions(io, room);
             return;
           }
         }
@@ -470,11 +498,11 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
         if (fb) {
           const fbResult = room.engine.handleAction({ playerId: aiPlayer.id, ...fb });
           if (fbResult.success) {
-            roomPhaseStart.delete(room.id);
+            // phaseStart kept for acted tracking
             broadcastPlayerViews(io, room);
             emitPhaseChange(io, room);
             startPhaseTimer(io, room);
-            await triggerAIActions(io, room);
+            await doTriggerAIActions(io, room);
             return;
           }
         }

@@ -274,6 +274,12 @@ export class GameEngine {
       this.state.nightActions = this.emptyNightActions();
       this.state.deaths = [];
       this.transitionTo(GamePhase.GUARD_TURN);
+      return;
+    }
+    if (phase === GamePhase.DAWN) {
+      // 黎明自动推进到遗言或讨论
+      this.advancePhase();
+      return;
     }
     if (phase === GamePhase.LAST_WORDS) {
       // 遗言阶段：死者发言队列

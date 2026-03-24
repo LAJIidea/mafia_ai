@@ -157,12 +157,16 @@ ${this.memory.length > 0 ? this.memory.join('\n') : '暂无'}
   }
 
   private async callAPI(prompt: string): Promise<string> {
-    const response = await fetch(`${this.config.baseUrl}/api/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.apiToken}`,
-        'HTTP-Referer': 'https://werewolf-ai-game.app',
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    try {
+      const response = await fetch(`${this.config.baseUrl}/api/v1/chat/completions`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiToken}`,
+          'HTTP-Referer': 'https://werewolf-ai-game.app',
         'X-Title': 'Werewolf AI Game',
       },
       body: JSON.stringify({
@@ -184,6 +188,9 @@ ${this.memory.length > 0 ? this.memory.join('\n') : '暂无'}
       choices: Array<{ message: { content: string } }>;
     };
     return data.choices[0]?.message?.content || '';
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private parseResponse(response: string, player: Player, gameState: GameState): ActionRequest {
