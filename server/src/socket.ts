@@ -321,7 +321,6 @@ function startPhaseTimer(io: SocketServer, room: Room): void {
         room.engine.skipCurrentPhase();
       }
       roomPhaseStart.delete(room.id);
-      roomAILock.set(room.id, false); // Force release mutex on timeout
       broadcastPlayerViews(io, room);
       emitPhaseChange(io, room);
       startPhaseTimer(io, room);
@@ -333,15 +332,7 @@ function startPhaseTimer(io: SocketServer, room: Room): void {
 }
 
 async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
-  // Mutex: prevent concurrent execution for same room
-  if (roomAILock.get(room.id)) return;
-  roomAILock.set(room.id, true);
-
-  try {
-    await doTriggerAIActions(io, room);
-  } finally {
-    roomAILock.set(room.id, false);
-  }
+  await doTriggerAIActions(io, room);
 }
 
 async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
