@@ -43,6 +43,15 @@ interface GameState {
   pkCandidates: string[];
 }
 
+const ROLE_EMOJI: Record<string, string> = {
+  werewolf: '🐺', villager: '👤', seer: '🔮', witch: '🧪',
+  hunter: '🔫', guard: '🛡️', fool: '🤡',
+};
+const ROLE_NAME: Record<string, string> = {
+  werewolf: '狼人', villager: '平民', seer: '预言家', witch: '女巫',
+  hunter: '猎人', guard: '守卫', fool: '白痴',
+};
+
 // 阶段对应的TTS主持人语音key
 const PHASE_NARRATOR_KEY: Record<string, string> = {
   night_start: 'night_start',
@@ -191,6 +200,10 @@ export default function Game() {
     }
   };
 
+  const handleEndSpeech = useCallback(() => {
+    socket.emit('advance_speaker');
+  }, [socket]);
+
   if (!gameState) {
     return (
       <div className="min-h-screen night-overlay flex items-center justify-center">
@@ -224,19 +237,6 @@ export default function Game() {
   // 当前是否是我的发言轮次
   const isMyTurn = gameState.currentSpeaker === myPlayerId;
   const isSpeakPhase = ['discussion', 'last_words', 'pk_speech'].includes(gameState.phase);
-
-  const handleEndSpeech = useCallback(() => {
-    socket.emit('advance_speaker');
-  }, [socket]);
-
-  const ROLE_EMOJI: Record<string, string> = {
-    werewolf: '🐺', villager: '👤', seer: '🔮', witch: '🧪',
-    hunter: '🔫', guard: '🛡️', fool: '🤡',
-  };
-  const ROLE_NAME: Record<string, string> = {
-    werewolf: '狼人', villager: '平民', seer: '预言家', witch: '女巫',
-    hunter: '猎人', guard: '守卫', fool: '白痴',
-  };
 
   return (
     <div className="h-screen night-overlay flex flex-col overflow-hidden">
