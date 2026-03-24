@@ -35,9 +35,12 @@ export default function Lobby() {
       setGameState(state);
     });
 
-    socket.on('joined', () => {
+    socket.on('joined', (data: { playerId: string }) => {
       setJoined(true);
       setError('');
+      if (data?.playerId && roomId) {
+        sessionStorage.setItem(`playerId_${roomId}`, data.playerId);
+      }
     });
 
     socket.on('error', (data: { message: string }) => {
