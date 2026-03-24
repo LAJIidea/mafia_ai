@@ -12,12 +12,12 @@ export interface AIModel {
 }
 
 export const SUPPORTED_MODELS: AIModel[] = [
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-  { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google' },
-  { id: 'deepseek/deepseek-chat', name: 'Deepseek Chat', provider: 'DeepSeek' },
-  { id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen 2.5', provider: 'Alibaba' },
-  { id: 'moonshot/moonshot-v1-128k', name: 'Kimi', provider: 'Moonshot' },
+  { id: 'openai/gpt-4.1-mini', name: 'GPT-4.1 Mini', provider: 'OpenAI' },
+  { id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5', provider: 'Anthropic' },
+  { id: 'google/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'Google' },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek' },
+  { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B', provider: 'Alibaba' },
+  { id: 'moonshotai/kimi-k2', name: 'Kimi K2', provider: 'Moonshot' },
 ];
 
 export class AIAgent {
@@ -162,6 +162,8 @@ ${this.memory.length > 0 ? this.memory.join('\n') : '暂无'}
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.apiToken}`,
+        'HTTP-Referer': 'https://werewolf-ai-game.app',
+        'X-Title': 'Werewolf AI Game',
       },
       body: JSON.stringify({
         model: this.model,

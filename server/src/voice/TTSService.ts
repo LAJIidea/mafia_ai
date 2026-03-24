@@ -4,19 +4,19 @@ import { existsSync } from 'fs';
 
 // AI玩家音色配置 - 每个模型对应不同音色
 export const VOICE_PROFILES: Record<string, { voice: string; rate: string; pitch: string; label: string }> = {
-  'openai/gpt-4o': {
+  'openai/gpt-4.1-mini': {
     voice: 'zh-CN-YunxiNeural',
     rate: '+0%',
     pitch: '+0Hz',
     label: '云希（男声，成熟沉稳）',
   },
-  'anthropic/claude-3.5-sonnet': {
+  'anthropic/claude-sonnet-4.5': {
     voice: 'zh-CN-XiaoyiNeural',
     rate: '+5%',
     pitch: '+2Hz',
     label: '晓伊（女声，温柔知性）',
   },
-  'google/gemini-2.0-flash': {
+  'google/gemini-2.5-flash-lite': {
     voice: 'zh-CN-YunjianNeural',
     rate: '+0%',
     pitch: '-2Hz',
@@ -28,13 +28,13 @@ export const VOICE_PROFILES: Record<string, { voice: string; rate: string; pitch
     pitch: '+0Hz',
     label: '晓晓（女声，活泼可爱）',
   },
-  'qwen/qwen-2.5-72b-instruct': {
+  'qwen/qwen3-235b-a22b': {
     voice: 'zh-CN-YunxiaNeural',
     rate: '+0%',
     pitch: '+3Hz',
     label: '云夏（男声，年轻活力）',
   },
-  'moonshot/moonshot-v1-128k': {
+  'moonshotai/kimi-k2': {
     voice: 'zh-CN-XiaochenNeural',
     rate: '+0%',
     pitch: '-1Hz',
