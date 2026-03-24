@@ -423,11 +423,62 @@ async function triggerAIActions(io: SocketServer, room: Room): Promise<void> {
           console.warn(`AI ${aiPlayer.name} attempt ${attempt + 1}/${MAX_RETRIES} failed: ${result.message}`);
           await new Promise(resolve => setTimeout(resolve, 500));
         }
-        // All retries failed - use skip/abstain as final fallback
-        console.error(`AI ${aiPlayer.name} all retries exhausted, skipping`);
+        // All retries failed - submit default/skip action to keep game moving
+        console.error(`AI ${aiPlayer.name} all retries exhausted, using fallback action`);
+        const fallbackActions: Record<string, { action: string; targetId?: string }> = {
+          [GamePhase.GUARD_TURN]: { action: 'guard' },
+          [GamePhase.WEREWOLF_TURN]: { action: 'kill' },
+          [GamePhase.WITCH_TURN]: { action: 'witch_skip' },
+          [GamePhase.SEER_TURN]: { action: 'investigate' },
+          [GamePhase.VOTING]: { action: 'vote' },
+          [GamePhase.PK_VOTING]: { action: 'vote' },
+          [GamePhase.HUNTER_SHOOT]: { action: 'shoot' },
+        };
+        const fallback = fallbackActions[state.phase];
+        if (fallback) {
+          const fbResult = room.engine.handleAction({ playerId: aiPlayer.id, ...fallback });
+          if (fbResult.success) {
+            const minDuration = PHASE_MIN_DURATION[state.phase];
+            if (minDuration) {
+              const phaseStart = roomPhaseStart.get(room.id) || Date.now();
+              const remaining = minDuration - (Date.now() - phaseStart);
+              if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining));
+            }
+            roomPhaseStart.delete(room.id);
+            broadcastPlayerViews(io, room);
+            emitPhaseChange(io, room);
+            startPhaseTimer(io, room);
+            await triggerAIActions(io, room);
+            return;
+          }
+        }
       }
     } catch (err) {
       console.error(`AI ${aiPlayer.name} error:`, err);
+      // On error, also try fallback to prevent game from sticking
+      try {
+        const fallbackActions: Record<string, { action: string }> = {
+          [GamePhase.GUARD_TURN]: { action: 'guard' },
+          [GamePhase.WEREWOLF_TURN]: { action: 'kill' },
+          [GamePhase.WITCH_TURN]: { action: 'witch_skip' },
+          [GamePhase.SEER_TURN]: { action: 'investigate' },
+          [GamePhase.VOTING]: { action: 'vote' },
+          [GamePhase.PK_VOTING]: { action: 'vote' },
+          [GamePhase.HUNTER_SHOOT]: { action: 'shoot' },
+        };
+        const fb = fallbackActions[state.phase];
+        if (fb) {
+          const fbResult = room.engine.handleAction({ playerId: aiPlayer.id, ...fb });
+          if (fbResult.success) {
+            roomPhaseStart.delete(room.id);
+            broadcastPlayerViews(io, room);
+            emitPhaseChange(io, room);
+            startPhaseTimer(io, room);
+            await triggerAIActions(io, room);
+            return;
+          }
+        }
+      } catch { /* ignore fallback errors */ }
     }
   }
 }

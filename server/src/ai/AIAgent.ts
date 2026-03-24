@@ -12,9 +12,9 @@ export interface AIModel {
 }
 
 export const SUPPORTED_MODELS: AIModel[] = [
-  { id: 'openai/gpt-4.1-mini', name: 'GPT-4.1 Mini', provider: 'OpenAI' },
+  { id: 'openai/gpt-4.1-nano', name: 'GPT-4.1 Nano', provider: 'OpenAI' },
   { id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5', provider: 'Anthropic' },
-  { id: 'google/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'Google' },
+  { id: 'google/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash', provider: 'Google' },
   { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek' },
   { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B', provider: 'Alibaba' },
   { id: 'moonshotai/kimi-k2', name: 'Kimi K2', provider: 'Moonshot' },

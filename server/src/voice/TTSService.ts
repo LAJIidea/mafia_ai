@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 
 // AI玩家音色配置 - 每个模型对应不同音色
 export const VOICE_PROFILES: Record<string, { voice: string; rate: string; pitch: string; label: string }> = {
-  'openai/gpt-4.1-mini': {
+  'openai/gpt-4.1-nano': {
     voice: 'zh-CN-YunxiNeural',
     rate: '+0%',
     pitch: '+0Hz',
