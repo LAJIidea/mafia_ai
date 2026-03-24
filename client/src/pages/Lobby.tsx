@@ -75,11 +75,11 @@ export default function Lobby() {
     });
   };
 
-  const handleAddAI = (modelId: string, modelName: string) => {
+  const handleAddAI = (modelId: string, _modelName: string) => {
     if (!roomId) return;
     socket.emit('add_ai', {
       roomId,
-      playerName: `AI-${modelName}`,
+      playerName: `玩家${(gameState?.players?.length || 0) + 1}`,
       aiModel: modelId,
     });
   };

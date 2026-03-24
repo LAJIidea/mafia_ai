@@ -283,6 +283,11 @@ function broadcastPlayerViews(io: SocketServer, room: Room): void {
 
 function emitPhaseChange(io: SocketServer, room: Room): void {
   const state = room.engine.getState();
+  // 查找最近的投票结果事件
+  const voteEvent = state.events
+    .filter(e => e.type === GamePhase.VOTE_RESULT)
+    .pop();
+
   io.to(room.id).emit('phase_change', {
     phase: state.phase,
     round: state.round,
@@ -291,6 +296,7 @@ function emitPhaseChange(io: SocketServer, room: Room): void {
     currentSpeaker: state.currentSpeaker,
     phaseDeadline: state.phaseDeadline,
     pkCandidates: state.pkCandidates,
+    voteResult: voteEvent?.data || null,
   });
 }
 
@@ -341,6 +347,14 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
   if (!aiManager || !aiManager.getConfig()) return;
 
   if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
+
+  // 狼人阶段：如果有人类狼人存活，让人类狼人决定，AI狼人不自动行动
+  if (state.phase === GamePhase.WEREWOLF_TURN) {
+    const humanWolf = state.players.find(
+      p => p.type === PlayerType.HUMAN && p.alive && p.role === RoleName.WEREWOLF
+    );
+    if (humanWolf) return;
+  }
 
   // Find AI players who need to act this phase
   let aiPlayers: typeof state.players;

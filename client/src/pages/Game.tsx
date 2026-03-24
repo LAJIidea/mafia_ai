@@ -74,6 +74,7 @@ export default function Game() {
   const [subtitle, setSubtitle] = useState<string>('');
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [hasActed, setHasActed] = useState(false); // 当前阶段是否已操作
   const lastPhaseRef = useRef<string>('');
 
   const socket = getSocket();
@@ -124,9 +125,29 @@ export default function Game() {
       sessionStorage.setItem(`playerId_${roomId}`, data.playerId);
     });
 
-    socket.on('phase_change', (data: { phase: string; round: number; deaths?: string[]; winner?: string }) => {
+    socket.on('phase_change', (data: { phase: string; round: number; deaths?: string[]; winner?: string; voteResult?: any }) => {
       setSelectedTarget(null);
+      setHasActed(false);
       showPhaseSubtitle(data.phase, data.deaths, data.winner);
+
+      // 显示投票结果
+      if (data.voteResult?.votes && gameState) {
+        const votes = data.voteResult.votes as Array<{ voterId: string; targetId: string | null }>;
+        const voteLines = votes.map((v: any) => {
+          const voter = gameState.players.find(p => p.id === v.voterId);
+          const target = v.targetId ? gameState.players.find(p => p.id === v.targetId) : null;
+          return `${voter?.name || '?'} → ${target?.name || '弃票'}`;
+        });
+        if (voteLines.length > 0) {
+          setMessages(prev => [...prev, {
+            playerId: 'system',
+            playerName: '📊 投票结果',
+            message: voteLines.join('\n'),
+            type: 'text' as const,
+            timestamp: Date.now(),
+          }]);
+        }
+      }
 
       // 播放主持人语音
       if (data.phase !== lastPhaseRef.current) {
@@ -167,8 +188,10 @@ export default function Game() {
   const myPlayer = gameState?.players.find(p => p.id === myPlayerId);
 
   const sendAction = useCallback((action: string, targetId?: string) => {
+    if (hasActed) return;
+    setHasActed(true);
     socket.emit('game_action', { action, targetId });
-  }, [socket]);
+  }, [socket, hasActed]);
 
   const sendChat = useCallback((message: string) => {
     socket.emit('chat_message', { message, type: 'text' });
