@@ -434,12 +434,16 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
 
   if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
 
-  // 狼人阶段：如果有人类狼人存活，让人类狼人决定，AI狼人不自动行动
+  // 狼人阶段：等人类狼人先投票，人类投完后AI再跟投
   if (state.phase === GamePhase.WEREWOLF_TURN) {
-    const humanWolf = state.players.find(
+    const humanWolves = state.players.filter(
       p => p.type === PlayerType.HUMAN && p.alive && p.role === RoleName.WEREWOLF
     );
-    if (humanWolf) return;
+    if (humanWolves.length > 0) {
+      const werewolfVotes = state.nightActions.werewolfVotes || [];
+      const humanWolvesVoted = humanWolves.every(hw => werewolfVotes.some((v: any) => v.voterId === hw.id));
+      if (!humanWolvesVoted) return; // 等人类狼人先投
+    }
   }
 
   // Find AI players who need to act this phase

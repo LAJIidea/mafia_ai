@@ -78,6 +78,7 @@ export interface WitchPotions {
 export interface NightActions {
   guardTarget: string | null;
   werewolfTarget: string | null;
+  werewolfVotes: Array<{ voterId: string; targetId: string | null }>; // 各狼人的投票意向
   witchSave: boolean;
   witchPoisonTarget: string | null;
   seerTarget: string | null;

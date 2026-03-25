@@ -48,7 +48,24 @@ export class GameEngine {
         return { ...p, role: null };
       });
     }
-    state.nightActions = this.emptyNightActions();
+
+    // 角色特定的nightActions视图
+    if (player.role === RoleName.WITCH && state.phase === GamePhase.WITCH_TURN) {
+      // 女巫看到今晚被杀者
+      state.nightActions = {
+        ...this.emptyNightActions(),
+        werewolfTarget: this.state.nightActions.werewolfTarget,
+      };
+    } else if (player.role === RoleName.WEREWOLF && state.phase === GamePhase.WEREWOLF_TURN) {
+      // 狼人看到队友的投票意向
+      state.nightActions = {
+        ...this.emptyNightActions(),
+        werewolfVotes: this.state.nightActions.werewolfVotes,
+      };
+    } else {
+      state.nightActions = this.emptyNightActions();
+    }
+
     return state;
   }
 
@@ -236,6 +253,7 @@ export class GameEngine {
     return {
       guardTarget: null,
       werewolfTarget: null,
+      werewolfVotes: [],
       witchSave: false,
       witchPoisonTarget: null,
       seerTarget: null,
@@ -393,17 +411,68 @@ export class GameEngine {
       return { success: false, message: '无效操作' };
     }
 
+    // 检查是否已投过
+    const alreadyVoted = this.state.nightActions.werewolfVotes.find(v => v.voterId === player.id);
+    if (alreadyVoted) {
+      return { success: false, message: '你已经投过票了' };
+    }
+
     const targetId = request.targetId || null;
     if (targetId) {
       const target = this.state.players.find(p => p.id === targetId);
       if (!target || !target.alive) {
         return { success: false, message: '目标玩家不存在或已死亡' };
       }
+      // 不能杀自己队友
+      if (target.role === RoleName.WEREWOLF) {
+        return { success: false, message: '不能杀害狼人队友' };
+      }
     }
 
-    this.state.nightActions.werewolfTarget = targetId;
-    this.advancePhase();
-    return { success: true, message: targetId ? '已选择目标' : '选择空刀' };
+    // 记录这个狼人的投票
+    this.state.nightActions.werewolfVotes.push({ voterId: player.id, targetId });
+
+    // 检查是否所有存活狼人都已投票
+    const aliveWolves = this.alivePlayersByRole(RoleName.WEREWOLF);
+    if (this.state.nightActions.werewolfVotes.length >= aliveWolves.length) {
+      // 统计投票结果
+      this.resolveWerewolfVotes();
+      this.advancePhase();
+    }
+
+    return { success: true, message: targetId ? '已选择目标' : '选择空刀', data: {
+      werewolfVotes: this.state.nightActions.werewolfVotes,
+      totalWolves: aliveWolves.length,
+    }};
+  }
+
+  private resolveWerewolfVotes(): void {
+    const votes = this.state.nightActions.werewolfVotes;
+    const voteCounts = new Map<string, number>();
+
+    for (const vote of votes) {
+      if (vote.targetId) {
+        voteCounts.set(vote.targetId, (voteCounts.get(vote.targetId) || 0) + 1);
+      }
+    }
+
+    if (voteCounts.size === 0) {
+      // 全部空刀
+      this.state.nightActions.werewolfTarget = null;
+      return;
+    }
+
+    const maxVotes = Math.max(...voteCounts.values());
+    const topTargets = [...voteCounts.entries()].filter(([, count]) => count === maxVotes);
+
+    if (topTargets.length === 1) {
+      // 多数票一致
+      this.state.nightActions.werewolfTarget = topTargets[0][0];
+    } else {
+      // 平票：随机从最高票目标中选一个
+      const randomIdx = Math.floor(Math.random() * topTargets.length);
+      this.state.nightActions.werewolfTarget = topTargets[randomIdx][0];
+    }
   }
 
   private handleWitchAction(player: Player, request: ActionRequest): ActionResult {
@@ -418,6 +487,14 @@ export class GameEngine {
       if (!this.state.nightActions.werewolfTarget) {
         return { success: false, message: '今晚没有人被杀' };
       }
+      // 同一晚不能同时使用解药和毒药
+      if (this.state.nightActions.witchPoisonTarget) {
+        return { success: false, message: '本晚已使用毒药，不能再使用解药' };
+      }
+      // 非首晚不能自救（被杀目标是自己）
+      if (this.state.nightActions.werewolfTarget === player.id && this.state.round > 1) {
+        return { success: false, message: '非首晚不能自救' };
+      }
       this.state.nightActions.witchSave = true;
       this.state.witchPotions.antidote = false;
       this.advancePhase();
@@ -427,6 +504,10 @@ export class GameEngine {
     if (request.action === 'witch_poison') {
       if (!this.state.witchPotions.poison) {
         return { success: false, message: '毒药已用完' };
+      }
+      // 同一晚不能同时使用解药和毒药
+      if (this.state.nightActions.witchSave) {
+        return { success: false, message: '本晚已使用解药，不能再使用毒药' };
       }
       const targetId = request.targetId;
       if (!targetId) {

@@ -97,12 +97,19 @@ ${nonWerewolves.map(p => `- ${p.name} (ID: ${p.id})`).join('\n')}
         break;
 
       case GamePhase.WITCH_TURN:
-        prompt += `你是女巫。`;
+        prompt += `你是女巫。当前是第${gameState.round}轮。`;
         if (gameState.witchPotions.antidote && gameState.nightActions.werewolfTarget) {
-          prompt += `\n今晚有人被狼人杀害了。你有解药，是否使用解药救人？`;
+          const targetName = gameState.players.find(p => p.id === gameState.nightActions.werewolfTarget)?.name || '某人';
+          prompt += `\n今晚 ${targetName} 被狼人杀害了。你有解药。`;
+          // 非首晚不能自救
+          if (gameState.nightActions.werewolfTarget === player.id && gameState.round > 1) {
+            prompt += `\n注意：被杀的是你自己，但非首晚不能自救，不能使用解药。`;
+          } else {
+            prompt += `\n你可以使用解药救人。`;
+          }
         }
         if (gameState.witchPotions.poison) {
-          prompt += `\n你有毒药，是否使用毒药毒杀某人？`;
+          prompt += `\n你有毒药，可以毒杀某人。注意：同一晚不能同时使用解药和毒药。`;
         }
         prompt += `\n请以JSON格式回复以下之一：
 - 使用解药：{"action": "witch_save"}
