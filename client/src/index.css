@@ -156,6 +156,14 @@ body {
   50% { box-shadow: 0 0 0 8px rgba(39, 174, 96, 0); }
 }
 
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
 /* 录制安全区域指示 (16:9) */
 .recording-safe-area {
   max-width: 1920px;

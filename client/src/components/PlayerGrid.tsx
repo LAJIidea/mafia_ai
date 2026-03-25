@@ -49,6 +49,9 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSelectTarget, phase, deaths, pkCandidates = [] }: Props) {
+  const myPlayer = players.find(p => p.id === myPlayerId);
+  const isWerewolf = myPlayer?.role === 'werewolf';
+
   const canSelect = (player: Player) => {
     if (!player.alive) return false;
     if (player.id === myPlayerId) {
@@ -82,6 +85,7 @@ export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSele
           const isDead = !player.alive;
           const isNewDeath = deaths.includes(player.id);
           const selectable = canSelect(player);
+          const isWolfTeammate = isWerewolf && !isMe && player.role === 'werewolf' && player.alive;
 
           return (
             <div
@@ -89,7 +93,7 @@ export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSele
               onClick={() => selectable && onSelectTarget(isSelected ? null : player.id)}
               className={`player-card w-full ${isDead ? 'dead' : ''} ${isSelected ? 'selected' : ''} ${
                 selectable ? 'cursor-pointer hover:scale-105' : ''
-              } ${isNewDeath ? 'death-animation' : ''}`}
+              } ${isNewDeath ? 'death-animation' : ''} ${isWolfTeammate ? 'ring-2 ring-red-500/70 bg-red-900/20' : ''}`}
             >
               {/* 座位号 */}
               <div className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-wolf/80 flex items-center justify-center text-xs font-bold">
@@ -100,6 +104,13 @@ export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSele
               {isMe && (
                 <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-guard flex items-center justify-center text-xs">
                   ⭐
+                </div>
+              )}
+
+              {/* 狼人队友标记 */}
+              {isWolfTeammate && (
+                <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-red-600 flex items-center justify-center text-xs">
+                  🐺
                 </div>
               )}
 

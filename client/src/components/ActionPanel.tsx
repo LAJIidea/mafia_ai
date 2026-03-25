@@ -41,8 +41,20 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
     </div>
   );
 
-  const renderWerewolfActions = () => (
+  const renderWerewolfActions = () => {
+    const wolfTeammates = gameState?.players?.filter(
+      (p: any) => p.role === 'werewolf' && p.id !== myPlayer?.id && p.alive
+    ) || [];
+    return (
   <div className="space-y-3">
+      {wolfTeammates.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-red-400 mb-1">
+          <span>🐺 你的狼队友：</span>
+          {wolfTeammates.map((w: any) => (
+            <span key={w.id} className="bg-red-900/40 px-2 py-0.5 rounded text-red-300 font-bold">{w.name}</span>
+          ))}
+        </div>
+      )}
       <p className="text-sm text-gray-400">选择一名玩家进行杀害</p>
       <div className="flex gap-3">
         <button
@@ -60,7 +72,8 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
         </button>
       </div>
     </div>
-  );
+    );
+  };
 
   const renderWitchActions = () => (
     <div className="space-y-3">

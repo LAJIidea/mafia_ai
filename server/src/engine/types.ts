@@ -137,7 +137,7 @@ export const PHASE_TIMEOUTS: Record<string, number> = {
   [GamePhase.SEER_TURN]: 30000,
   [GamePhase.LAST_WORDS]: 60000,
   [GamePhase.DISCUSSION]: 180000,
-  [GamePhase.VOTING]: 30000,
+  [GamePhase.VOTING]: 15000,
   [GamePhase.PK_SPEECH]: 60000,
   [GamePhase.PK_VOTING]: 20000,
   [GamePhase.HUNTER_SHOOT]: 15000,

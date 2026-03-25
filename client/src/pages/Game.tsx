@@ -8,6 +8,7 @@ import ChatPanel from '../components/ChatPanel';
 import PhaseDisplay from '../components/PhaseDisplay';
 import Subtitle from '../components/Subtitle';
 import VoiceInput from '../components/VoiceInput';
+import VoteResultModal from '../components/VoteResultModal';
 
 interface Player {
   id: string;
@@ -75,6 +76,11 @@ export default function Game() {
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [hasActed, setHasActed] = useState(false); // 当前阶段是否已操作
+  const [voteResult, setVoteResult] = useState<{
+    votes: Array<{ voterId: string; targetId: string | null }>;
+    result?: string;
+    exiledId?: string;
+  } | null>(null);
   const lastPhaseRef = useRef<string>('');
 
   const socket = getSocket();
@@ -130,22 +136,15 @@ export default function Game() {
       setHasActed(false);
       showPhaseSubtitle(data.phase, data.deaths, data.winner);
 
-      // 显示投票结果
-      if (data.voteResult?.votes && gameState) {
+      // 显示投票结果弹窗
+      if (data.voteResult?.votes) {
         const votes = data.voteResult.votes as Array<{ voterId: string; targetId: string | null }>;
-        const voteLines = votes.map((v: any) => {
-          const voter = gameState.players.find(p => p.id === v.voterId);
-          const target = v.targetId ? gameState.players.find(p => p.id === v.targetId) : null;
-          return `${voter?.name || '?'} → ${target?.name || '弃票'}`;
-        });
-        if (voteLines.length > 0) {
-          setMessages(prev => [...prev, {
-            playerId: 'system',
-            playerName: '📊 投票结果',
-            message: voteLines.join('\n'),
-            type: 'text' as const,
-            timestamp: Date.now(),
-          }]);
+        if (votes.length > 0) {
+          setVoteResult({
+            votes,
+            result: data.voteResult.result as string | undefined,
+            exiledId: data.voteResult.exiledId as string | undefined,
+          });
         }
       }
 
@@ -357,6 +356,17 @@ export default function Game() {
         pkCandidates={gameState.pkCandidates || []}
         myPlayerId={myPlayerId}
       />
+
+      {/* 投票结果弹窗 */}
+      {voteResult && gameState && (
+        <VoteResultModal
+          votes={voteResult.votes}
+          players={gameState.players}
+          result={voteResult.result}
+          exiledName={voteResult.exiledId ? gameState.players.find(p => p.id === voteResult.exiledId)?.name : undefined}
+          onClose={() => setVoteResult(null)}
+        />
+      )}
 
       {/* 字幕 */}
       {subtitle && <Subtitle text={subtitle} />}
