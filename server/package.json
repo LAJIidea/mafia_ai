@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
     "edge-tts": "^1.0.0",
     "express": "^4.21.0",
     "qrcode": "^1.5.4",

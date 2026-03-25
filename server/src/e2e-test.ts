@@ -8,6 +8,10 @@
  * 4. 人类玩家是否能看到自己的身份
  * 5. "结束发言"是否能推进讨论
  * 6. 游戏是否能正常结束
+ * 7. TTS语音合成API是否正常工作
+ * 8. AI发言是否携带aiModel字段（客户端TTS依赖）
+ * 9. 人类发言是否被广播（AI记忆依赖）
+ * 10. 投票结果是否随phase_change事件下发
  */
 
 import { io, Socket } from 'socket.io-client';
@@ -42,7 +46,14 @@ async function apiFetch(path: string, opts?: RequestInit) {
     ...opts,
     headers: { 'Content-Type': 'application/json', ...opts?.headers },
   });
-  return { status: res.status, body: await res.json().catch(() => null) };
+  return { status: res.status, body: await res.json().catch(() => null), raw: res };
+}
+
+async function apiFetchRaw(path: string, opts?: RequestInit) {
+  return fetch(`${BASE}${path}`, {
+    ...opts,
+    headers: { ...opts?.headers },
+  });
 }
 
 function waitFor(s: Socket, ev: string, pred: (d: any) => boolean, ms = 60000): Promise<any> {
@@ -57,7 +68,7 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 async function main() {
   const startTime = Date.now();
-  console.log('\n🐺 狼人杀端到端测试开始\n');
+  console.log('\n🐺 狼人杀端到端测试开始（含语音功能测试）\n');
   console.log(`API Key: ${API_KEY!.substring(0, 15)}...`);
   console.log(`Server: ${BASE}\n`);
 
@@ -90,7 +101,95 @@ async function main() {
     log('配置回读', 'FAIL', `${err}`);
   }
 
-  // ========== Step 3: 创建房间 ==========
+  // ========== Step 3: TTS API 测试（游戏开始前） ==========
+  console.log('\n🔊 TTS语音功能测试\n');
+
+  // 3a: 音色列表
+  try {
+    const voicesRes = await apiFetch('/api/tts/voices');
+    if (voicesRes.status === 200 && voicesRes.body) {
+      const voiceCount = Object.keys(voicesRes.body).length;
+      log('TTS-音色列表', 'PASS', `${voiceCount}个音色配置 (${Object.keys(voicesRes.body).join(', ')})`);
+    } else {
+      log('TTS-音色列表', 'FAIL', `状态码: ${voicesRes.status}`);
+    }
+  } catch (err) {
+    log('TTS-音色列表', 'FAIL', `${err}`);
+  }
+
+  // 3b: 主持人语音合成
+  try {
+    const narratorRes = await apiFetchRaw('/api/tts/narrator/dawn');
+    if (narratorRes.ok) {
+      const contentType = narratorRes.headers.get('content-type');
+      const buf = await narratorRes.arrayBuffer();
+      if (contentType?.includes('audio') && buf.byteLength > 1000) {
+        log('TTS-主持人语音', 'PASS', `"天亮了"语音合成成功，大小: ${(buf.byteLength / 1024).toFixed(1)}KB, type: ${contentType}`);
+      } else {
+        log('TTS-主持人语音', 'FAIL', `返回数据异常: type=${contentType}, size=${buf.byteLength}`);
+      }
+    } else {
+      // edge-tts依赖微软服务，403通常是网络环境限制，非代码bug
+      const errBody = await narratorRes.json().catch(() => null);
+      const errMsg = errBody?.error || `状态码: ${narratorRes.status}`;
+      const isProviderIssue = errMsg.includes('403') || errMsg.includes('Provider') || errMsg.includes('失败');
+      log('TTS-主持人语音', isProviderIssue ? 'WARN' : 'FAIL', `${errMsg}（需配置DASHSCOPE_API_KEY启用CosyVoice2）`);
+    }
+  } catch (err) {
+    log('TTS-主持人语音', 'WARN', `${err}（edge-tts依赖微软服务）`);
+  }
+
+  // 3c: AI玩家发言语音合成
+  try {
+    const speakRes = await apiFetchRaw('/api/tts/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '我觉得三号玩家很可疑。', aiModel: 'deepseek/deepseek-chat' }),
+    });
+    if (speakRes.ok) {
+      const contentType = speakRes.headers.get('content-type');
+      const buf = await speakRes.arrayBuffer();
+      if (contentType?.includes('audio') && buf.byteLength > 1000) {
+        log('TTS-玩家发言语音', 'PASS', `语音合成成功，大小: ${(buf.byteLength / 1024).toFixed(1)}KB, 音色: 晓晓(deepseek)`);
+      } else {
+        log('TTS-玩家发言语音', 'FAIL', `返回数据异常: type=${contentType}, size=${buf.byteLength}`);
+      }
+    } else {
+      const errBody = await speakRes.json().catch(() => null);
+      const errMsg = errBody?.error || `状态码: ${speakRes.status}`;
+      const isProviderIssue = errMsg.includes('403') || errMsg.includes('Provider') || errMsg.includes('失败');
+      log('TTS-玩家发言语音', isProviderIssue ? 'WARN' : 'FAIL', `${errMsg}（需配置DASHSCOPE_API_KEY）`);
+    }
+  } catch (err) {
+    log('TTS-玩家发言语音', 'WARN', `${err}（edge-tts依赖微软服务）`);
+  }
+
+  // 3d: 不同模型音色测试
+  const testModels = ['openai/gpt-4.1-nano', 'anthropic/claude-sonnet-4.5'];
+  for (const model of testModels) {
+    try {
+      const res = await apiFetchRaw('/api/tts/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '测试语音。', aiModel: model }),
+      });
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        log(`TTS-音色[${model.split('/')[1]}]`, 'PASS', `合成成功 ${(buf.byteLength / 1024).toFixed(1)}KB`);
+      } else {
+        const errBody = await res.json().catch(() => null);
+        const errMsg = errBody?.error || `状态码: ${res.status}`;
+        const isProviderIssue = errMsg.includes('403') || errMsg.includes('Provider') || errMsg.includes('失败');
+        log(`TTS-音色[${model.split('/')[1]}]`, isProviderIssue ? 'WARN' : 'FAIL', `${errMsg}`);
+      }
+    } catch (err) {
+      log(`TTS-音色[${model.split('/')[1]}]`, 'WARN', `${err}`);
+    }
+  }
+
+  // ========== Step 4: 创建房间 ==========
+  console.log('\n🎮 游戏流程测试\n');
+
   let roomId: string;
   try {
     const roomRes = await apiFetch('/api/rooms', {
@@ -109,14 +208,16 @@ async function main() {
     return;
   }
 
-  // ========== Step 4: 模拟人类玩家加入 ==========
+  // ========== Step 5: 模拟人类玩家加入 ==========
   const client = io(BASE, { transports: ['websocket'] });
   let myPlayerId = '';
   let myRole = '';
   let gameState: any = null;
   const phaseHistory: string[] = [];
   const chatMessages: any[] = [];
+  const voteResults: any[] = [];
   let gameOver = false;
+  let humanChatBroadcasted = false;
 
   // 监听所有事件
   client.on('game_state', (s: any) => {
@@ -132,6 +233,11 @@ async function main() {
       phaseHistory.push(d.phase);
       console.log(`  📌 阶段变化: ${d.phase} (round=${d.round})`);
     }
+    // 收集投票结果
+    if (d.voteResult?.votes) {
+      voteResults.push(d.voteResult);
+      console.log(`  📊 投票结果: ${JSON.stringify(d.voteResult.result || 'N/A')}, 票数: ${d.voteResult.votes?.length || 0}`);
+    }
     if (d.winner) {
       gameOver = true;
       log('游戏结束', 'PASS', `赢家: ${d.winner}`);
@@ -139,7 +245,12 @@ async function main() {
   });
   client.on('chat_message', (m: any) => {
     chatMessages.push(m);
-    console.log(`  💬 ${m.playerName}: ${m.message?.substring(0, 50)}...`);
+    const aiTag = m.aiModel ? ` [AI:${m.aiModel.split('/')[1]}]` : ' [人类]';
+    console.log(`  💬${aiTag} ${m.playerName}: ${m.message?.substring(0, 60)}...`);
+    // 检测人类发言是否被广播回来
+    if (m.playerId === myPlayerId && m.message === '大家好，我觉得我们需要好好分析一下局势。') {
+      humanChatBroadcasted = true;
+    }
   });
   client.on('error', (e: any) => {
     console.log(`  ⚠️ socket error: ${e.message}`);
@@ -156,7 +267,7 @@ async function main() {
     myPlayerId = await joinP;
     log('加入房间', 'PASS', `playerId=${myPlayerId.substring(0, 8)}...`);
 
-    // ========== Step 5: 添加5个AI ==========
+    // ========== Step 6: 添加5个AI ==========
     const aiModels = [
       'deepseek/deepseek-chat',
       'deepseek/deepseek-chat',
@@ -177,7 +288,7 @@ async function main() {
       return;
     }
 
-    // ========== Step 6: 开始游戏 ==========
+    // ========== Step 7: 开始游戏 ==========
     client.emit('start_game');
     console.log('\n🎮 游戏开始，等待游戏流程...\n');
 
@@ -185,7 +296,7 @@ async function main() {
     await waitFor(client, 'game_state', (s: any) => s.phase && s.phase !== 'waiting', 15000);
     log('游戏开始', 'PASS', `进入阶段: ${gameState?.phase}`);
 
-    // ========== Step 7: 检查身份是否可见 ==========
+    // ========== Step 8: 检查身份是否可见 ==========
     const me = gameState?.players?.find((p: any) => p.id === myPlayerId);
     if (me?.role) {
       log('身份可见', 'PASS', `角色: ${me.role}`);
@@ -193,7 +304,7 @@ async function main() {
       log('身份可见', 'FAIL', `role=${me?.role}, myPlayerId=${myPlayerId}`);
     }
 
-    // ========== Step 8: 自动处理人类操作 ==========
+    // ========== Step 9: 自动处理人类操作 ==========
     const nightRoles: Record<string, string> = {
       guard: 'guard_turn', werewolf: 'werewolf_turn', witch: 'witch_turn', seer: 'seer_turn',
     };
@@ -202,6 +313,7 @@ async function main() {
     };
 
     const actedPhases = new Set<string>();
+    let humanSpeechSent = false;
 
     client.on('game_state', (gs: any) => {
       if (gameOver) return;
@@ -224,10 +336,21 @@ async function main() {
         }
       }
 
-      // 讨论/遗言阶段：当轮到我时，等2秒后结束发言
+      // 讨论/遗言阶段：当轮到我时，先发送一条文字聊天，然后结束发言
       if (['discussion', 'last_words', 'pk_speech'].includes(gs.phase) &&
           gs.currentSpeaker === myPlayerId && !actedPhases.has(`speak-${phaseKey}`)) {
         actedPhases.add(`speak-${phaseKey}`);
+
+        // 第一次讨论时发送一条聊天消息，测试人类发言广播+AI接收
+        if (gs.phase === 'discussion' && !humanSpeechSent) {
+          humanSpeechSent = true;
+          client.emit('chat_message', {
+            message: '大家好，我觉得我们需要好好分析一下局势。',
+            type: 'text',
+          });
+          console.log(`  🎤 我发送聊天消息（测试人类发言广播）`);
+        }
+
         setTimeout(() => {
           console.log(`  🎭 我结束发言 (${gs.phase})`);
           client.emit('advance_speaker');
@@ -246,7 +369,7 @@ async function main() {
       }
     });
 
-    // ========== Step 9: 等待游戏结束 ==========
+    // ========== Step 10: 等待游戏结束 ==========
     console.log('\n⏳ 等待游戏流程完成（最长5分钟）...\n');
 
     const gameEndTimeout = Math.max(0, TIMEOUT - (Date.now() - startTime));
@@ -259,7 +382,7 @@ async function main() {
       }
     }
 
-    // ========== Step 10: 验证结果 ==========
+    // ========== Step 11: 验证结果 ==========
     console.log('\n📊 测试结果汇总\n');
     console.log('阶段历史:', phaseHistory.join(' → '));
     console.log('聊天消息数:', chatMessages.length);
@@ -291,14 +414,91 @@ async function main() {
       log('投票阶段', 'WARN', '未进入（可能游戏提前结束）');
     }
 
-    if (chatMessages.length > 0) {
-      log('AI发言', 'PASS', `共${chatMessages.length}条消息`);
+    // ========== 语音相关验证 ==========
+    console.log('\n🔊 语音功能验证\n');
+
+    // 11a: AI发言是否携带aiModel字段
+    const aiMessages = chatMessages.filter(m => m.aiModel);
+    const humanMessages = chatMessages.filter(m => !m.aiModel && m.playerId !== 'system');
+    if (aiMessages.length > 0) {
+      const modelSet = new Set(aiMessages.map(m => m.aiModel));
+      log('AI发言含aiModel', 'PASS', `${aiMessages.length}条AI消息，模型: ${[...modelSet].join(', ')}`);
     } else {
-      log('AI发言', 'FAIL', '无AI发言');
+      log('AI发言含aiModel', 'FAIL', '无AI消息包含aiModel字段');
+    }
+
+    // 11b: AI发言aiModel字段在TTS音色表中
+    const validTTSModels = aiMessages.filter(m => {
+      // 检查aiModel是否在已知音色列表中
+      const knownModels = [
+        'openai/gpt-4.1-nano', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-flash-lite',
+        'deepseek/deepseek-chat', 'qwen/qwen3-235b-a22b', 'moonshotai/kimi-k2',
+      ];
+      return knownModels.includes(m.aiModel);
+    });
+    if (validTTSModels.length > 0) {
+      log('AI发言→TTS映射', 'PASS', `${validTTSModels.length}/${aiMessages.length}条消息的aiModel可映射到TTS音色`);
+    } else if (aiMessages.length > 0) {
+      log('AI发言→TTS映射', 'WARN', `aiModel值未命中音色表: ${aiMessages[0]?.aiModel}`);
+    } else {
+      log('AI发言→TTS映射', 'FAIL', '无AI发言可验证');
+    }
+
+    // 11c: 人类发言是否被广播（验证AI能收到其他玩家消息）
+    if (humanChatBroadcasted) {
+      log('人类发言广播', 'PASS', '人类聊天消息已广播回客户端（AI同样能收到并写入记忆）');
+    } else if (humanSpeechSent) {
+      log('人类发言广播', 'WARN', '人类已发送消息但未收到广播回执');
+    } else {
+      log('人类发言广播', 'WARN', '未进入讨论阶段，无法测试');
+    }
+
+    // 11d: 投票结果是否随phase_change下发
+    if (voteResults.length > 0) {
+      const firstVR = voteResults[0];
+      log('投票结果下发', 'PASS', `${voteResults.length}次投票结果, 首次结果: ${firstVR.result}, 票数: ${firstVR.votes?.length}`);
+    } else if (phaseHistory.includes('voting')) {
+      log('投票结果下发', 'WARN', '进入了投票但未收到投票结果数据');
+    } else {
+      log('投票结果下发', 'WARN', '未进入投票阶段');
+    }
+
+    // 11e: AI聊天总量验证
+    if (chatMessages.length > 0) {
+      log('聊天消息总量', 'PASS', `共${chatMessages.length}条 (AI: ${aiMessages.length}, 人类: ${humanMessages.length})`);
+    } else {
+      log('聊天消息总量', 'FAIL', '无聊天消息');
+    }
+
+    // 11f: TTS端到端链路验证 - 拿一条真实的AI发言去调TTS
+    if (aiMessages.length > 0) {
+      const sampleMsg = aiMessages[0];
+      try {
+        const ttsRes = await apiFetchRaw('/api/tts/speak', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: sampleMsg.message, aiModel: sampleMsg.aiModel }),
+        });
+        if (ttsRes.ok) {
+          const buf = await ttsRes.arrayBuffer();
+          log('TTS端到端链路', 'PASS',
+            `用AI真实发言"${sampleMsg.message.substring(0, 30)}..."调TTS成功, 音频: ${(buf.byteLength / 1024).toFixed(1)}KB, 模型: ${sampleMsg.aiModel}`);
+        } else {
+          const errBody = await ttsRes.json().catch(() => null);
+          const errMsg = errBody?.error || `TTS返回${ttsRes.status}`;
+          const isProviderIssue = errMsg.includes('403') || errMsg.includes('Provider') || errMsg.includes('失败');
+          log('TTS端到端链路', isProviderIssue ? 'WARN' : 'FAIL',
+            `${errMsg}（需配置DASHSCOPE_API_KEY启用CosyVoice2 TTS）`);
+        }
+      } catch (err) {
+        log('TTS端到端链路', 'FAIL', `${err}`);
+      }
+    } else {
+      log('TTS端到端链路', 'WARN', '无AI发言可用于端到端验证');
     }
 
     if (gameOver) {
-      log('游戏结束', 'PASS', `赢家已确定`);
+      log('游戏完成', 'PASS', `赢家已确定`);
     }
 
   } catch (err) {

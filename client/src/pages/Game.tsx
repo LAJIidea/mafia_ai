@@ -87,7 +87,7 @@ export default function Game() {
   const socket = getSocket();
   const { playAudio } = useAudioPlayer();
 
-  // 播放主持人语音
+  // 播放主持人语音（仍可客户端调API作为备用，但优先使用audio_broadcast）
   const playNarratorVoice = useCallback(async (lineKey: string) => {
     if (!voiceEnabled) return;
     try {
@@ -98,24 +98,6 @@ export default function Game() {
       }
     } catch {
       // 语音播放失败时静默处理，字幕仍会显示
-    }
-  }, [voiceEnabled, playAudio]);
-
-  // 播放AI发言语音
-  const playAISpeech = useCallback(async (text: string, aiModel: string) => {
-    if (!voiceEnabled) return;
-    try {
-      const response = await fetch('/api/tts/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, aiModel }),
-      });
-      if (response.ok) {
-        const audioBuffer = await response.arrayBuffer();
-        await playAudio(audioBuffer);
-      }
-    } catch {
-      // 静默处理
     }
   }, [voiceEnabled, playAudio]);
 
@@ -133,11 +115,24 @@ export default function Game() {
     });
 
     socket.on('phase_change', (data: { phase: string; round: number; deaths?: string[]; winner?: string; voteResult?: any }) => {
-      setSelectedTarget(null);
-      setHasActed(false);
-      showPhaseSubtitle(data.phase, data.deaths, data.winner);
+      const phaseChanged = data.phase !== lastPhaseRef.current;
 
-      // 显示投票结果弹窗
+      if (phaseChanged) {
+        lastPhaseRef.current = data.phase;
+        setSelectedTarget(null);
+        setHasActed(false);
+        showPhaseSubtitle(data.phase, data.deaths, data.winner);
+
+        // 播放主持人语音
+        const narratorKey = data.phase === 'game_over'
+          ? (data.winner === 'werewolf' ? 'game_over_werewolf' : 'game_over_villager')
+          : PHASE_NARRATOR_KEY[data.phase];
+        if (narratorKey) {
+          playNarratorVoice(narratorKey);
+        }
+      }
+
+      // 显示投票结果弹窗（仅当服务端发来新的投票结果时）
       if (data.voteResult?.votes) {
         const votes = data.voteResult.votes as Array<{ voterId: string; targetId: string | null }>;
         if (votes.length > 0) {
@@ -148,24 +143,18 @@ export default function Game() {
           });
         }
       }
-
-      // 播放主持人语音
-      if (data.phase !== lastPhaseRef.current) {
-        lastPhaseRef.current = data.phase;
-        const narratorKey = data.phase === 'game_over'
-          ? (data.winner === 'werewolf' ? 'game_over_werewolf' : 'game_over_villager')
-          : PHASE_NARRATOR_KEY[data.phase];
-        if (narratorKey) {
-          playNarratorVoice(narratorKey);
-        }
-      }
     });
 
     socket.on('chat_message', (msg: ChatMessage) => {
       setMessages(prev => [...prev, msg]);
-      // AI发言播放TTS - 直接使用消息中的aiModel字段，避免闭包陈旧
-      if (msg.aiModel) {
-        playAISpeech(msg.message, msg.aiModel);
+      // AI发言语音现在由服务端通过audio_broadcast推送，无需客户端调TTS API
+    });
+
+    // 接收服务端推送的音频（AI发言/真人语音）
+    socket.on('audio_broadcast', (data: { playerId: string; playerName: string; audio: ArrayBuffer; type: string }) => {
+      if (!voiceEnabled) return;
+      if (data.audio) {
+        playAudio(data.audio).catch(() => {});
       }
     });
 
@@ -190,8 +179,9 @@ export default function Game() {
       socket.off('phase_change');
       socket.off('chat_message');
       socket.off('action_result');
+      socket.off('audio_broadcast');
     };
-  }, [socket, roomId, playNarratorVoice, playAISpeech]);
+  }, [socket, roomId, playNarratorVoice, voiceEnabled, playAudio]);
 
   const myPlayer = gameState?.players.find(p => p.id === myPlayerId);
 

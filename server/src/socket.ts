@@ -3,6 +3,13 @@ import { RoomManager, Room } from './engine/index.js';
 import { PlayerType, GamePhase, RoleName, PHASE_TIMEOUTS, PHASE_MIN_DURATION } from './engine/types.js';
 import { AIManager } from './ai/AIAgent.js';
 import { getGlobalAIConfig } from './ai/config.js';
+import { TTSService } from './voice/TTSService.js';
+import { STTService } from './voice/STTService.js';
+
+// Shared TTS/STT services
+const ttsService = new TTSService();
+const sttService = new STTService();
+export { ttsService, sttService };
 
 // Socket → player mapping (only for human players)
 const socketPlayerMap = new Map<string, { roomId: string; playerId: string }>();
@@ -232,6 +239,74 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
       }
     });
 
+    // 真人玩家语音发言 - 接收录音音频
+    socket.on('voice_audio', async (data: { audio: ArrayBuffer }) => {
+      const mapping = socketPlayerMap.get(socket.id);
+      if (!mapping) return;
+
+      const room = roomManager.getRoom(mapping.roomId);
+      if (!room) return;
+
+      // 检查发言权限
+      if (!room.engine.canSpeak(mapping.playerId)) {
+        socket.emit('error', { message: '未轮到你发言' });
+        return;
+      }
+
+      const state = room.engine.getState();
+      const player = state.players.find(p => p.id === mapping.playerId);
+      if (!player) return;
+
+      const audioBuffer = Buffer.from(data.audio);
+
+      // 1. 广播音频给房间内其他真人玩家
+      const otherSockets = [...(io.sockets.sockets || new Map()).entries()]
+        .filter(([sid]) => {
+          const m = socketPlayerMap.get(sid);
+          return m && m.roomId === mapping.roomId && m.playerId !== mapping.playerId;
+        })
+        .map(([, s]) => s);
+
+      for (const s of otherSockets) {
+        s.emit('audio_broadcast', {
+          playerId: mapping.playerId,
+          playerName: player.name,
+          audio: audioBuffer,
+          type: 'human',
+        });
+      }
+
+      // 2. STT转录 → 写入AI记忆 + 广播文字消息
+      let transcribedText = '';
+      if (sttService.isAvailable()) {
+        transcribedText = await sttService.transcribe(audioBuffer);
+      }
+
+      if (transcribedText) {
+        // 广播文字消息
+        io.to(mapping.roomId).emit('chat_message', {
+          playerId: mapping.playerId,
+          playerName: player.name,
+          message: transcribedText,
+          type: 'voice' as const,
+          timestamp: Date.now(),
+        });
+
+        // 写入AI agent记忆
+        const aiManager = roomAIManagers.get(mapping.roomId);
+        if (aiManager) {
+          for (const aiPlayer of state.players) {
+            if (aiPlayer.type === PlayerType.AI && aiPlayer.id !== mapping.playerId) {
+              const agent = aiManager.getAgent(aiPlayer.id);
+              if (agent) {
+                agent.addMemory(`${player.name}说: "${transcribedText}"`);
+              }
+            }
+          }
+        }
+      }
+    });
+
     socket.on('disconnect', () => {
       const mapping = socketPlayerMap.get(socket.id);
       if (mapping) {
@@ -281,12 +356,23 @@ function broadcastPlayerViews(io: SocketServer, room: Room): void {
   }
 }
 
+// Track last emitted vote event to avoid re-sending
+const roomLastVoteEventId = new Map<string, number>();
+
 function emitPhaseChange(io: SocketServer, room: Room): void {
   const state = room.engine.getState();
-  // 查找最近的投票结果事件
-  const voteEvent = state.events
-    .filter(e => e.type === GamePhase.VOTE_RESULT)
-    .pop();
+
+  // 只发送新的投票结果（避免重复弹窗）
+  let voteResult: Record<string, unknown> | null = null;
+  const voteEvents = state.events.filter(e => e.type === GamePhase.VOTE_RESULT);
+  if (voteEvents.length > 0) {
+    const lastVoteEvent = voteEvents[voteEvents.length - 1];
+    const lastSentId = roomLastVoteEventId.get(room.id) || 0;
+    if (lastVoteEvent.timestamp > lastSentId) {
+      voteResult = lastVoteEvent.data;
+      roomLastVoteEventId.set(room.id, lastVoteEvent.timestamp);
+    }
+  }
 
   io.to(room.id).emit('phase_change', {
     phase: state.phase,
@@ -296,7 +382,7 @@ function emitPhaseChange(io: SocketServer, room: Room): void {
     currentSpeaker: state.currentSpeaker,
     phaseDeadline: state.phaseDeadline,
     pkCandidates: state.pkCandidates,
-    voteResult: voteEvent?.data || null,
+    voteResult,
   });
 }
 
@@ -401,6 +487,19 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
             timestamp: Date.now(),
             aiModel: aiPlayer.aiModel,
           });
+          // TTS合成并广播音频（异步，不阻塞游戏流程）
+          ttsService.synthesizePlayerSpeech(speech, aiPlayer.aiModel || '')
+            .then(audioBuffer => {
+              io.to(room.id).emit('audio_broadcast', {
+                playerId: aiPlayer.id,
+                playerName: aiPlayer.name,
+                audio: audioBuffer,
+                type: 'ai',
+              });
+            })
+            .catch(ttsErr => {
+              console.warn(`AI ${aiPlayer.name} TTS失败:`, ttsErr instanceof Error ? ttsErr.message : ttsErr);
+            });
           // Write speech to all other AI agents' memory
           for (const otherPlayer of currentState.players) {
             if (otherPlayer.type === PlayerType.AI && otherPlayer.id !== aiPlayer.id) {

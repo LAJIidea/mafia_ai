@@ -3,10 +3,9 @@ import { RoomManager } from '../engine/index.js';
 import { RoleName, PlayerType, PRESET_CONFIGS, getDefaultConfig } from '../engine/index.js';
 import { networkInterfaces } from 'os';
 import QRCode from 'qrcode';
-import { TTSService, VOICE_PROFILES, NARRATOR_LINES } from '../voice/TTSService.js';
+import { NARRATOR_LINES } from '../voice/TTSService.js';
 import { setGlobalAIConfig, getGlobalAIConfig } from '../ai/config.js';
-
-const ttsService = new TTSService();
+import { ttsService } from '../socket.js';
 
 export function setupRoutes(app: Express, roomManager: RoomManager): void {
   // 获取房间列表
