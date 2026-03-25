@@ -16,6 +16,7 @@ interface Props {
   phase: string;
   deaths: string[];
   pkCandidates?: string[];
+  seerResults?: Map<string, boolean>; // 预言家查验结果: playerId → isWerewolf
 }
 
 const ROLE_EMOJI: Record<string, string> = {
@@ -48,7 +49,7 @@ const ROLE_COLOR: Record<string, string> = {
   fool: 'text-yellow-400',
 };
 
-export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSelectTarget, phase, deaths, pkCandidates = [] }: Props) {
+export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSelectTarget, phase, deaths, pkCandidates = [], seerResults }: Props) {
   const myPlayer = players.find(p => p.id === myPlayerId);
   const isWerewolf = myPlayer?.role === 'werewolf';
 
@@ -86,6 +87,7 @@ export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSele
           const isNewDeath = deaths.includes(player.id);
           const selectable = canSelect(player);
           const isWolfTeammate = isWerewolf && !isMe && player.role === 'werewolf' && player.alive;
+          const seerResult = !isMe ? seerResults?.get(player.id) : undefined; // undefined=未查验, true=狼人, false=好人
 
           return (
             <div
@@ -128,6 +130,13 @@ export default function PlayerGrid({ players, myPlayerId, selectedTarget, onSele
               {(isMe || phase === 'game_over') && player.role && (
                 <div className={`text-sm text-center mt-1 font-bold ${phase === 'game_over' && !isMe ? 'role-reveal' : ''} ${ROLE_COLOR[player.role] || 'text-gray-400'}`}>
                   {ROLE_NAME[player.role] || '未知'}
+                </div>
+              )}
+
+              {/* 预言家查验结果 */}
+              {seerResult !== undefined && (
+                <div className={`text-sm text-center mt-1 font-bold ${seerResult ? 'text-red-400' : 'text-green-400'}`}>
+                  {seerResult ? '🐺 狼人' : '✅ 好人'}
                 </div>
               )}
 

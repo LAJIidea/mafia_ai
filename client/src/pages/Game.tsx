@@ -76,6 +76,7 @@ export default function Game() {
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [hasActed, setHasActed] = useState(false); // 当前阶段是否已操作
+  const [seerResults, setSeerResults] = useState<Map<string, boolean>>(new Map()); // 预言家查验结果: playerId → isWerewolf
   const [voteResult, setVoteResult] = useState<{
     votes: Array<{ voterId: string; targetId: string | null }>;
     result?: string;
@@ -172,6 +173,14 @@ export default function Game() {
       if (result.message) {
         setSubtitle(result.message);
         setTimeout(() => setSubtitle(''), 3000);
+      }
+      // 保存预言家查验结果
+      if (result.success && result.data?.targetId && typeof result.data?.isWerewolf === 'boolean') {
+        setSeerResults(prev => {
+          const next = new Map(prev);
+          next.set(result.data!.targetId as string, result.data!.isWerewolf as boolean);
+          return next;
+        });
       }
     });
 
@@ -319,6 +328,7 @@ export default function Game() {
             phase={gameState.phase}
             deaths={gameState.deaths}
             pkCandidates={gameState.pkCandidates || []}
+            seerResults={seerResults}
           />
         </div>
 
