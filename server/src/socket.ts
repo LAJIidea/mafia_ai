@@ -140,6 +140,20 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
         return;
       }
 
+      // 初始化AI agent角色信息
+      const state = room.engine.getState();
+      const aiManager = roomAIManagers.get(mapping.roomId);
+      if (aiManager) {
+        for (const p of state.players) {
+          if (p.type === PlayerType.AI && p.role) {
+            const agent = aiManager.getAgent(p.id);
+            if (agent) {
+              agent.initRole(p.id, p.name, p.role, room.id);
+            }
+          }
+        }
+      }
+
       broadcastPlayerViews(io, room);
       emitPhaseChange(io, room);
       startPhaseTimer(io, room);
@@ -233,6 +247,7 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
             const agent = aiManager.getAgent(aiPlayer.id);
             if (agent) {
               agent.addMemory(`${player.name}说: "${data.message}"`);
+              agent.recordSpeech(state.round, state.phase, player.name, data.message);
             }
           }
         }
@@ -371,6 +386,33 @@ function emitPhaseChange(io: SocketServer, room: Room): void {
     if (lastVoteEvent.timestamp > lastSentId) {
       voteResult = lastVoteEvent.data;
       roomLastVoteEventId.set(room.id, lastVoteEvent.timestamp);
+
+      // 同步投票结果到AI知识库
+      const aiManager = roomAIManagers.get(room.id);
+      if (aiManager && voteResult) {
+        const votes = (voteResult.votes as Array<{ voterId: string; targetId: string | null }>) || [];
+        const resultText = (voteResult.result as string) || '';
+        const exiledId = voteResult.exiledId as string | undefined;
+        const exiledName = exiledId ? state.players.find(p => p.id === exiledId)?.name : null;
+        const summary = exiledName ? `${exiledName}被放逐` : resultText === 'no_exile' ? '无人被放逐' : resultText;
+
+        for (const p of state.players) {
+          if (p.type === PlayerType.AI) {
+            const agent = aiManager.getAgent(p.id);
+            if (agent) {
+              agent.recordVoteResult(
+                state.round,
+                (lastVoteEvent.data.phase as string) || 'voting',
+                votes.map(v => ({
+                  voter: state.players.find(pl => pl.id === v.voterId)?.name || '?',
+                  target: v.targetId ? state.players.find(pl => pl.id === v.targetId)?.name || '?' : null,
+                })),
+                summary,
+              );
+            }
+          }
+        }
+      }
     }
   }
 
@@ -404,9 +446,31 @@ function startPhaseTimer(io: SocketServer, room: Room): void {
   const timeout = PHASE_TIMEOUTS[state.phase];
   if (!timeout) return;
 
-  const timer = setTimeout(() => {
+  const timer = setTimeout(async () => {
     const currentState = room.engine.getState();
     if (currentState.phase === state.phase && currentState.round === state.round) {
+      console.log(`⏰ 阶段超时: ${state.phase} (round=${state.round})`);
+
+      // 狼人回合超时：人类狼人未操作，自动提交空刀，然后让AI狼人行动
+      if (state.phase === GamePhase.WEREWOLF_TURN) {
+        const humanWolves = currentState.players.filter(
+          (p: any) => p.type === PlayerType.HUMAN && p.alive && p.role === RoleName.WEREWOLF
+        );
+        for (const hw of humanWolves) {
+          const alreadyVoted = currentState.nightActions.werewolfVotes?.some((v: any) => v.voterId === hw.id);
+          if (!alreadyVoted) {
+            console.log(`⏰ 人类狼人 ${hw.name} 超时未操作，自动空刀`);
+            room.engine.handleAction({ playerId: hw.id, action: 'kill' });
+          }
+        }
+        // 让AI狼人也行动
+        broadcastPlayerViews(io, room);
+        emitPhaseChange(io, room);
+        startPhaseTimer(io, room);
+        triggerAIActions(io, room);
+        return;
+      }
+
       if (currentState.currentSpeaker) {
         room.engine.advanceSpeaker();
       } else {
@@ -504,16 +568,18 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
             .catch(ttsErr => {
               console.warn(`AI ${aiPlayer.name} TTS失败:`, ttsErr instanceof Error ? ttsErr.message : ttsErr);
             });
-          // Write speech to all other AI agents' memory
+          // Write speech to all other AI agents' memory + knowledge
           for (const otherPlayer of currentState.players) {
             if (otherPlayer.type === PlayerType.AI && otherPlayer.id !== aiPlayer.id) {
               const otherAgent = aiManager.getAgent(otherPlayer.id);
               if (otherAgent) {
                 otherAgent.addMemory(`${aiPlayer.name}说: "${speech}"`);
+                otherAgent.recordSpeech(currentState.round, currentState.phase, aiPlayer.name, speech);
               }
             }
           }
           agent.addMemory(`我发言: "${speech}"`);
+          agent.recordSpeech(currentState.round, currentState.phase, aiPlayer.name, speech);
           actedSet?.add(aiPlayer.id);
           // Advance to next speaker
           room.engine.advanceSpeaker();
@@ -561,6 +627,7 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
         }
         // All retries failed - submit default/skip action to keep game moving
         console.error(`AI ${aiPlayer.name} all retries exhausted, using fallback action`);
+        agent.addMemory(`Round ${state.round}, ${state.phase}: 决策超时，使用默认操作`);
         const fallbackActions: Record<string, { action: string; targetId?: string }> = {
           [GamePhase.GUARD_TURN]: { action: 'guard' },
           [GamePhase.WEREWOLF_TURN]: { action: 'kill' },
