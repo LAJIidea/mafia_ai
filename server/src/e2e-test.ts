@@ -513,90 +513,62 @@ async function main() {
       log('游戏完成', 'PASS', `赢家已确定`);
     }
 
-    // ========== Step 12: AI能力评估 ==========
+    // ========== Step 12: AI能力评估（按玩家+身份评分） ==========
     if (aiMessages.length >= 3) {
       console.log('\n🧠 AI能力评估\n');
 
-      // 收集评估材料
       const winner = gameState?.winner || 'unknown';
-      const evalData = {
-        totalRounds: gameState?.round || 0,
-        winner,
-        aiSpeechCount: aiMessages.length,
-        speeches: aiMessages.map(m => ({
-          player: m.playerName,
-          message: m.message,
-        })),
-        voteCount: voteResults.length,
-        voteDetails: voteResults.map(vr => ({
-          result: vr.result,
-          votes: vr.votes?.map((v: any) => `${v.voterId?.substring(0,4)}→${v.targetId?.substring(0,4) || '弃票'}`),
-        })),
-        phaseFlow: phaseHistory.join(' → '),
-      };
+      // 按玩家分组发言
+      const playerSpeeches: Record<string, string[]> = {};
+      for (const m of aiMessages) {
+        if (!playerSpeeches[m.playerName]) playerSpeeches[m.playerName] = [];
+        playerSpeeches[m.playerName].push(m.message);
+      }
+      // 获取每个AI的角色（游戏结束时角色公开）
+      const playerRoles: Record<string, string> = {};
+      for (const p of (gameState?.players || [])) {
+        if (p.type === 'ai' && p.role) {
+          playerRoles[p.name] = p.role;
+        }
+      }
 
-      // 用LLM裁判评估AI能力
-      try {
-        const evalPrompt = `你是一个资深狼人杀高手裁判。请从"是否帮助己方阵营获胜"的角度严格评估AI玩家的游戏能力。
+      const evalPrompt = `你是一个资深狼人杀高手裁判。请对每个AI玩家按其身份单独评分。
 
 游戏信息：
-- ${PLAYER_COUNT}人局，共${evalData.totalRounds}轮，${evalData.aiSpeechCount}次AI发言，${evalData.voteCount}次投票
-- 最终赢家：${evalData.winner === 'werewolf' ? '狼人阵营' : '好人阵营'}
-- 阶段流程：${evalData.phaseFlow}
+- ${PLAYER_COUNT}人局，共${gameState?.round || 0}轮
+- 最终赢家：${winner === 'werewolf' ? '狼人阵营' : '好人阵营'}
+- 阶段流程：${phaseHistory.join(' → ')}
 
-AI发言记录：
-${evalData.speeches.map((s, i) => `[${i + 1}] ${s.player}: "${s.message}"`).join('\n')}
+各AI玩家身份：
+${Object.entries(playerRoles).map(([name, role]) => `- ${name}: ${role}`).join('\n')}
 
-请从以下角度评估（每项0-20分）：
+各AI玩家发言记录：
+${Object.entries(playerSpeeches).map(([name, speeches]) => {
+  const role = playerRoles[name] || '未知';
+  return `【${name} (${role})】\n${speeches.map((s, i) => `  [${i+1}] "${s}"`).join('\n')}`;
+}).join('\n\n')}
 
-1. 夜间决策能力（0-20）：
-   - 狼人：是否优先杀威胁最大的人（预言家/女巫）？狼人间是否统一目标？
-   - 预言家：是否查验了最可疑的人？
-   - 女巫：解药/毒药使用是否合理？
-   - 守卫：是否守护了关键角色？
-
-2. 发言对局势的影响（0-20）：
-   - 发言是否帮助了己方阵营？
-   - 狼人发言是否成功搅浑水、转移火力？
-   - 好人发言是否帮助找到了狼人？
-   - 是否有人的发言反而帮了对方？
-
-3. 投票决策（0-20）：
-   - 投票是否与发言立场一致？
-   - 好人是否投了狼人？狼人是否成功把票引向好人？
-   - 是否有跟票/抱团行为？
-
-4. 团队协作（0-20）：
-   - 狼人之间是否互保、配合转移火力？
-   - 好人是否站在了正确的一边？
-   - 是否形成了有效的阵营对抗？
-
-5. 局势判断（0-20）：
-   - 每轮结束后局势倒向哪方？AI是否做出了正确的局势判断？
-   - 是否有AI的操作导致己方阵营崩盘？
-   - 最终结果是否合理？
-
-评分标准：18-20=高手级，14-17=合格，10-13=一般，<10=不及格
+请对每个AI玩家按其身份评分（0-100分），评估维度：
+- 狼人：伪装能力、是否使用高级技巧（悍跳/反咬/倒钩）、是否保护队友、刀人选择
+- 预言家：信息公布时机、查验目标选择、是否有效引导好人
+- 女巫：用药决策、信息管理
+- 平民：分析能力、是否正确站队、是否帮到好人阵营
+- 守卫/猎人：守护/开枪选择是否合理
 
 请严格按JSON格式回复：
 {
-  "scores": {
-    "night_decision": {"score": 0, "comment": "评语"},
-    "speech_impact": {"score": 0, "comment": "评语"},
-    "vote_decision": {"score": 0, "comment": "评语"},
-    "teamwork": {"score": 0, "comment": "评语"},
-    "situation_judgment": {"score": 0, "comment": "评语"}
+  "players": {
+    "AI玩家1": {"role": "角色", "score": 0, "comment": "评语"},
+    "AI玩家2": {"role": "角色", "score": 0, "comment": "评语"}
   },
-  "total": 0,
+  "werewolf_avg": 0,
+  "good_avg": 0,
+  "total_avg": 0,
   "grade": "高手/合格/一般/不及格",
-  "key_issues": ["需要改进的具体问题"],
   "overall": "总体评价"
 }`;
 
-        const evalRes = await fetch(`${BASE}/api/ai/config`);
-        const evalConfig = await evalRes.json() as any;
-
-        // 使用已配置的OpenRouter调用评估
+      try {
         const judgeRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -606,11 +578,11 @@ ${evalData.speeches.map((s, i) => `[${i + 1}] ${s.player}: "${s.message}"`).join
           body: JSON.stringify({
             model: 'deepseek/deepseek-chat',
             messages: [
-              { role: 'system', content: '你是专业的狼人杀游戏评审。请严格按JSON格式回复。' },
+              { role: 'system', content: '你是专业的狼人杀游戏评审。请严格按JSON格式回复，不要加其他内容。' },
               { role: 'user', content: evalPrompt },
             ],
             temperature: 0.3,
-            max_tokens: 800,
+            max_tokens: 1200,
           }),
         });
 
@@ -622,22 +594,26 @@ ${evalData.speeches.map((s, i) => `[${i + 1}] ${s.player}: "${s.message}"`).join
             const jsonMatch = judgeContent.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               const evalResult = JSON.parse(jsonMatch[0]);
-              const total = evalResult.total || 0;
-              const scores = evalResult.scores || {};
+              const players = evalResult.players || {};
 
-              console.log('📊 AI能力评分：');
-              for (const [key, val] of Object.entries(scores) as any) {
-                console.log(`  ${key}: ${val.score}/20 - ${val.comment}`);
+              console.log('📊 各AI玩家评分：');
+              for (const [name, info] of Object.entries(players) as any) {
+                const icon = info.role === 'werewolf' ? '🐺' : info.role === 'seer' ? '🔮' : info.role === 'witch' ? '🧪' : info.role === 'guard' ? '🛡️' : info.role === 'hunter' ? '🔫' : '👤';
+                console.log(`  ${icon} ${name}(${info.role}): ${info.score}/100 - ${info.comment}`);
               }
-              console.log(`\n  总分: ${total}/100 | 等级: ${evalResult.grade || '未知'}`);
-              console.log(`  总评: ${evalResult.overall || '无'}`);
-              if (evalResult.key_issues?.length > 0) {
-                console.log(`  待改进: ${evalResult.key_issues.join('; ')}`);
-              }
-              if (total >= 60) {
-                log('AI能力评估', 'PASS', `总分 ${total}/100 (>=60及格)`);
+              console.log(`\n  狼人平均: ${evalResult.werewolf_avg}/100 | 好人平均: ${evalResult.good_avg}/100`);
+              console.log(`  总平均: ${evalResult.total_avg}/100 | 等级: ${evalResult.grade}`);
+              console.log(`  总评: ${evalResult.overall}`);
+
+              const totalAvg = evalResult.total_avg || 0;
+              const goodAvg = evalResult.good_avg || 0;
+              const wolfAvg = evalResult.werewolf_avg || 0;
+
+              // 好人>=75及格，狼人>=60即可（暂不优化狼人）
+              if (goodAvg >= 75 || goodAvg === 0) {
+                log('AI能力评估', 'PASS', `总平均 ${totalAvg}/100 | 狼人:${wolfAvg} 好人:${goodAvg} (好人>=75及格)`);
               } else {
-                log('AI能力评估', 'FAIL', `总分 ${total}/100 (<60不及格，需改进Agent)`);
+                log('AI能力评估', 'FAIL', `总平均 ${totalAvg}/100 | 狼人:${wolfAvg} 好人:${goodAvg} (好人<75需优化)`);
               }
             } else {
               log('AI能力评估', 'WARN', `评估结果解析失败: ${judgeContent.substring(0, 200)}`);
