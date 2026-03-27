@@ -275,16 +275,30 @@ export class GameEngine {
     this.setPhaseDeadline();
     this.addEvent(phase, {});
 
-    // 不再跳过死亡角色的夜间阶段（避免暴露角色死亡信息）
-    // 由 PHASE_MIN_DURATION 保证至少持续15秒，然后超时自动推进
-    if (phase === GamePhase.GUARD_TURN && this.alivePlayersByRole(RoleName.GUARD).length === 0) {
-      // 守卫死了，但不跳过——让超时推进，保持15秒
+    // 夜间阶段处理：区分"配置中没有该角色"和"角色死了"
+    // 没有该角色 → 直接跳过（不暴露信息，因为大家都知道没有这个角色）
+    // 角色死了 → 不跳过，保持15秒后自动推进（避免暴露死亡信息）
+    if (phase === GamePhase.GUARD_TURN) {
+      const hasGuardInConfig = this.state.players.some(p => p.role === RoleName.GUARD);
+      if (!hasGuardInConfig) {
+        this.transitionTo(GamePhase.WEREWOLF_TURN);
+        return;
+      }
+      // 守卫存在但死了 → 不跳过，由triggerAIActions等15秒后推进
     }
-    if (phase === GamePhase.WITCH_TURN && this.alivePlayersByRole(RoleName.WITCH).length === 0) {
-      // 女巫死了，不跳过
+    if (phase === GamePhase.WITCH_TURN) {
+      const hasWitchInConfig = this.state.players.some(p => p.role === RoleName.WITCH);
+      if (!hasWitchInConfig) {
+        this.transitionTo(GamePhase.SEER_TURN);
+        return;
+      }
     }
-    if (phase === GamePhase.SEER_TURN && this.alivePlayersByRole(RoleName.SEER).length === 0) {
-      // 预言家死了，不跳过
+    if (phase === GamePhase.SEER_TURN) {
+      const hasSeerInConfig = this.state.players.some(p => p.role === RoleName.SEER);
+      if (!hasSeerInConfig) {
+        this.resolveDawn();
+        return;
+      }
     }
     if (phase === GamePhase.NIGHT_START) {
       this.state.nightActions = this.emptyNightActions();

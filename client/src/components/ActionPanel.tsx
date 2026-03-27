@@ -13,9 +13,10 @@ interface Props {
   gameState: any;
   pkCandidates?: string[];
   myPlayerId?: string;
+  hasActed?: boolean;
 }
 
-export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction, witchPotions, gameState, pkCandidates = [], myPlayerId = '' }: Props) {
+export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction, witchPotions, gameState, pkCandidates = [], myPlayerId = '', hasActed = false }: Props) {
   if (!myPlayer || !myPlayer.alive) {
     return null;
   }
@@ -115,21 +116,30 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
     const killedPlayer = killedId ? gameState.players?.find((p: any) => p.id === killedId) : null;
     const round = gameState.round || 1;
     const isSelfKilled = killedId === myPlayerId;
+    const hasAntidote = witchPotions.antidote;
     // 非首晚不能自救
-    const canSave = witchPotions.antidote && killedPlayer && !(isSelfKilled && round > 1);
+    const canSave = hasAntidote && killedPlayer && !(isSelfKilled && round > 1);
 
     return (
     <div className="space-y-3">
-      {killedPlayer ? (
-        <div className="bg-blood/20 border border-blood/40 rounded-lg px-4 py-3 mb-2">
-          <span className="text-blood font-bold">💀 今晚被杀：{killedPlayer.name}</span>
-          {isSelfKilled && round > 1 && (
-            <span className="text-gray-400 text-sm ml-2">（非首晚不能自救）</span>
-          )}
-        </div>
+      {hasAntidote ? (
+        // 有解药：显示被杀信息
+        killedPlayer ? (
+          <div className="bg-blood/20 border border-blood/40 rounded-lg px-4 py-3 mb-2">
+            <span className="text-blood font-bold">💀 今晚被杀：{killedPlayer.name}</span>
+            {isSelfKilled && round > 1 && (
+              <span className="text-gray-400 text-sm ml-2">（非首晚不能自救）</span>
+            )}
+          </div>
+        ) : (
+          <div className="bg-night/40 border border-gray-600 rounded-lg px-4 py-3 mb-2">
+            <span className="text-gray-400">今晚是平安夜，没有人被杀</span>
+          </div>
+        )
       ) : (
+        // 没有解药：不显示被杀信息
         <div className="bg-night/40 border border-gray-600 rounded-lg px-4 py-3 mb-2">
-          <span className="text-gray-400">今晚是平安夜，没有人被杀</span>
+          <span className="text-gray-400">💊 解药已用完，无法查看今晚被杀信息</span>
         </div>
       )}
       <p className="text-sm text-gray-400">选择使用药水（同一晚只能用一种）</p>
@@ -183,7 +193,15 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
     </div>
   );
 
-  const renderVotingActions = () => (
+  const renderVotingActions = () => {
+    if (hasActed) {
+      return (
+        <div className="text-center text-sm text-gray-400 py-3">
+          ✅ 已投票，等待其他玩家...
+        </div>
+      );
+    }
+    return (
     <div className="space-y-3">
       <p className="text-sm text-gray-400">投票放逐一名玩家</p>
       <div className="flex gap-3">
@@ -202,7 +220,8 @@ export default function ActionPanel({ phase, myPlayer, selectedTarget, onAction,
         </button>
       </div>
     </div>
-  );
+    );
+  };
 
   const renderHunterActions = () => (
     <div className="space-y-3">

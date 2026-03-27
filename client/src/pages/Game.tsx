@@ -355,6 +355,7 @@ export default function Game() {
         gameState={gameState}
         pkCandidates={gameState.pkCandidates || []}
         myPlayerId={myPlayerId}
+        hasActed={hasActed}
       />
 
       {/* 投票结果弹窗 */}

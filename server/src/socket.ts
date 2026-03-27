@@ -508,11 +508,11 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
   if (requiredRole) {
     const aliveWithRole = state.players.filter(p => p.alive && p.role === requiredRole);
     if (aliveWithRole.length === 0) {
-      // 角色已死，等最低时长后推进
-      const minDuration = PHASE_MIN_DURATION[state.phase] || 15000;
+      // 角色已死，等较短时间后推进（只需让客户端不感知到瞬间跳过）
+      const shortWait = 3000; // 3秒，比15秒短很多
       const phaseStart = roomPhaseStart.get(room.id) || Date.now();
       const elapsed = Date.now() - phaseStart;
-      const remaining = minDuration - elapsed;
+      const remaining = shortWait - elapsed;
       if (remaining > 0) {
         await new Promise(resolve => setTimeout(resolve, remaining));
       }
@@ -635,6 +635,13 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
           if (result.success) {
             agent.addMemory(`Round ${recheck.round}, ${state.phase}: performed ${action.action}`);
             actedSet?.add(aiPlayer.id);
+
+            // 预言家查验结果写入知识库
+            if (state.phase === GamePhase.SEER_TURN && result.data?.targetId && typeof result.data?.isWerewolf === 'boolean') {
+              const targetName = recheck.players.find(p => p.id === result.data!.targetId)?.name || '?';
+              agent.recordSeerResult(result.data.targetId as string, result.data.isWerewolf as boolean);
+              agent.addMemory(`查验结果: ${targetName} 是${result.data.isWerewolf ? '狼人' : '好人'}`);
+            }
 
             // Enforce minimum phase duration for night phases
             const minDuration = PHASE_MIN_DURATION[state.phase];
