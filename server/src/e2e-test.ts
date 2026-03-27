@@ -32,7 +32,10 @@ if (!API_KEY) {
 }
 
 const BASE = 'http://localhost:3001';
-const TIMEOUT = 300000; // 5分钟总超时
+// 从命令行参数读取人数，默认6人
+const PLAYER_COUNT = parseInt(process.argv[2] || '6', 10);
+const AI_COUNT = PLAYER_COUNT - 1;
+const TIMEOUT = PLAYER_COUNT >= 12 ? 600000 : 300000; // 12人局10分钟，其他5分钟
 const results: { step: string; status: 'PASS' | 'FAIL' | 'WARN'; detail: string }[] = [];
 
 function log(step: string, status: 'PASS' | 'FAIL' | 'WARN', detail: string) {
@@ -68,8 +71,7 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 async function main() {
   const startTime = Date.now();
-  console.log('\n🐺 狼人杀端到端测试开始（含语音功能测试）\n');
-  console.log(`API Key: ${API_KEY!.substring(0, 15)}...`);
+  console.log(`\n🐺 狼人杀端到端测试 (${PLAYER_COUNT}人局, 1真人+${AI_COUNT}AI)\n`);
   console.log(`Server: ${BASE}\n`);
 
   // ========== Step 1: 配置 AI Token ==========
@@ -194,7 +196,7 @@ async function main() {
   try {
     const roomRes = await apiFetch('/api/rooms', {
       method: 'POST',
-      body: JSON.stringify({ name: 'E2E测试房间', totalPlayers: 6 }),
+      body: JSON.stringify({ name: `E2E测试${PLAYER_COUNT}人局`, totalPlayers: PLAYER_COUNT }),
     });
     roomId = roomRes.body?.roomId;
     if (roomId) {
@@ -267,24 +269,17 @@ async function main() {
     myPlayerId = await joinP;
     log('加入房间', 'PASS', `playerId=${myPlayerId.substring(0, 8)}...`);
 
-    // ========== Step 6: 添加5个AI ==========
-    const aiModels = [
-      'deepseek/deepseek-chat',
-      'deepseek/deepseek-chat',
-      'deepseek/deepseek-chat',
-      'deepseek/deepseek-chat',
-      'deepseek/deepseek-chat',
-    ];
-    for (let i = 0; i < 5; i++) {
-      client.emit('add_ai', { roomId, playerName: `AI玩家${i + 1}`, aiModel: aiModels[i] });
+    // ========== Step 6: 添加AI ==========
+    for (let i = 0; i < AI_COUNT; i++) {
+      client.emit('add_ai', { roomId, playerName: `AI玩家${i + 1}`, aiModel: 'deepseek/deepseek-chat' });
       await sleep(300);
     }
     await sleep(1000);
 
-    if (gameState?.players?.length === 6) {
+    if (gameState?.players?.length === PLAYER_COUNT) {
       log('添加AI', 'PASS', `${gameState.players.length}个玩家就位`);
     } else {
-      log('添加AI', 'FAIL', `玩家数: ${gameState?.players?.length}`);
+      log('添加AI', 'FAIL', `玩家数: ${gameState?.players?.length}, 期望: ${PLAYER_COUNT}`);
       return;
     }
 
@@ -545,8 +540,7 @@ async function main() {
         const evalPrompt = `你是一个资深狼人杀高手裁判。请从"是否帮助己方阵营获胜"的角度严格评估AI玩家的游戏能力。
 
 游戏信息：
-- 6人局：2狼人、1预言家、1女巫、2平民
-- 共${evalData.totalRounds}轮，${evalData.aiSpeechCount}次AI发言，${evalData.voteCount}次投票
+- ${PLAYER_COUNT}人局，共${evalData.totalRounds}轮，${evalData.aiSpeechCount}次AI发言，${evalData.voteCount}次投票
 - 最终赢家：${evalData.winner === 'werewolf' ? '狼人阵营' : '好人阵营'}
 - 阶段流程：${evalData.phaseFlow}
 
