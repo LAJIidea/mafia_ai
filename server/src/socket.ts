@@ -498,6 +498,38 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
 
   if (state.phase === GamePhase.GAME_OVER || state.phase === GamePhase.WAITING) return;
 
+  // 夜间阶段：如果对应角色已死，等最低时长后自动推进（不暴露角色死亡）
+  const nightRoleMap: Record<string, RoleName> = {
+    [GamePhase.GUARD_TURN]: RoleName.GUARD,
+    [GamePhase.WITCH_TURN]: RoleName.WITCH,
+    [GamePhase.SEER_TURN]: RoleName.SEER,
+  };
+  const requiredRole = nightRoleMap[state.phase];
+  if (requiredRole) {
+    const aliveWithRole = state.players.filter(p => p.alive && p.role === requiredRole);
+    if (aliveWithRole.length === 0) {
+      // 角色已死，等最低时长后推进
+      const minDuration = PHASE_MIN_DURATION[state.phase] || 15000;
+      const phaseStart = roomPhaseStart.get(room.id) || Date.now();
+      const elapsed = Date.now() - phaseStart;
+      const remaining = minDuration - elapsed;
+      if (remaining > 0) {
+        await new Promise(resolve => setTimeout(resolve, remaining));
+      }
+      // 再次检查状态没变
+      const recheck = room.engine.getState();
+      if (recheck.phase === state.phase && recheck.round === state.round) {
+        room.engine.skipCurrentPhase();
+        roomPhaseStart.delete(room.id);
+        broadcastPlayerViews(io, room);
+        emitPhaseChange(io, room);
+        startPhaseTimer(io, room);
+        await doTriggerAIActions(io, room);
+      }
+      return;
+    }
+  }
+
   // 狼人阶段：等人类狼人先投票，人类投完后AI再跟投
   if (state.phase === GamePhase.WEREWOLF_TURN) {
     const humanWolves = state.players.filter(

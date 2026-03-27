@@ -336,20 +336,35 @@ async function main() {
         }
       }
 
-      // 讨论/遗言阶段：当轮到我时，先发送一条文字聊天，然后结束发言
+      // 讨论/遗言阶段：当轮到我时，发送聊天消息，然后结束发言
       if (['discussion', 'last_words', 'pk_speech'].includes(gs.phase) &&
           gs.currentSpeaker === myPlayerId && !actedPhases.has(`speak-${phaseKey}`)) {
         actedPhases.add(`speak-${phaseKey}`);
 
-        // 第一次讨论时发送一条聊天消息，测试人类发言广播+AI接收
-        if (gs.phase === 'discussion' && !humanSpeechSent) {
-          humanSpeechSent = true;
-          client.emit('chat_message', {
-            message: '大家好，我觉得我们需要好好分析一下局势。',
-            type: 'text',
-          });
-          console.log(`  🎤 我发送聊天消息（测试人类发言广播）`);
+        // 根据角色和轮次生成不同的发言
+        let speech = '';
+        const round = gs.round || 1;
+        if (me.role === 'werewolf') {
+          speech = round === 1
+            ? '大家好，我觉得我们需要好好分析一下局势，先听听大家的想法。'
+            : '我觉得上一轮投票情况很可疑，有些人跟票太快了，建议重点关注。';
+        } else if (me.role === 'seer') {
+          speech = round === 1
+            ? '大家好，我先听听大家发言，第一天信息太少不好判断。'
+            : '我有一些重要信息要分享，我昨晚查验了一个人，大家注意听。';
+        } else if (me.role === 'witch') {
+          speech = round === 1
+            ? '我觉得大家都要积极发言分析，不要划水，划水的人最可疑。'
+            : '结合前几天的发言，我觉得有些人的逻辑前后矛盾，值得关注。';
+        } else {
+          speech = round === 1
+            ? '大家好，我是平民，我会仔细分析每个人的发言，希望大家都说点有用的。'
+            : '根据投票情况来看，有几个人的投票方向很可疑，我觉得需要重点分析。';
         }
+
+        client.emit('chat_message', { message: speech, type: 'text' });
+        console.log(`  🎤 我(${me.role})发言: ${speech.substring(0, 40)}...`);
+        if (!humanSpeechSent) humanSpeechSent = true;
 
         setTimeout(() => {
           console.log(`  🎭 我结束发言 (${gs.phase})`);

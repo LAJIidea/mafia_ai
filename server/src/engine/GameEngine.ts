@@ -51,10 +51,10 @@ export class GameEngine {
 
     // 角色特定的nightActions视图
     if (player.role === RoleName.WITCH && state.phase === GamePhase.WITCH_TURN) {
-      // 女巫看到今晚被杀者
+      // 女巫只有在还有解药时才能看到今晚被杀者
       state.nightActions = {
         ...this.emptyNightActions(),
-        werewolfTarget: this.state.nightActions.werewolfTarget,
+        werewolfTarget: this.state.witchPotions.antidote ? this.state.nightActions.werewolfTarget : null,
       };
     } else if (player.role === RoleName.WEREWOLF && state.phase === GamePhase.WEREWOLF_TURN) {
       // 狼人看到队友的投票意向
@@ -275,18 +275,16 @@ export class GameEngine {
     this.setPhaseDeadline();
     this.addEvent(phase, {});
 
-    // 跳过没有存活角色的阶段
+    // 不再跳过死亡角色的夜间阶段（避免暴露角色死亡信息）
+    // 由 PHASE_MIN_DURATION 保证至少持续15秒，然后超时自动推进
     if (phase === GamePhase.GUARD_TURN && this.alivePlayersByRole(RoleName.GUARD).length === 0) {
-      this.transitionTo(GamePhase.WEREWOLF_TURN);
-      return;
+      // 守卫死了，但不跳过——让超时推进，保持15秒
     }
     if (phase === GamePhase.WITCH_TURN && this.alivePlayersByRole(RoleName.WITCH).length === 0) {
-      this.transitionTo(GamePhase.SEER_TURN);
-      return;
+      // 女巫死了，不跳过
     }
     if (phase === GamePhase.SEER_TURN && this.alivePlayersByRole(RoleName.SEER).length === 0) {
-      this.resolveDawn();
-      return;
+      // 预言家死了，不跳过
     }
     if (phase === GamePhase.NIGHT_START) {
       this.state.nightActions = this.emptyNightActions();
