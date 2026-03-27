@@ -294,6 +294,8 @@ async function main() {
 
     // 等待游戏离开 waiting 阶段
     await waitFor(client, 'game_state', (s: any) => s.phase && s.phase !== 'waiting', 15000);
+    // 通知服务器客户端已加载完成
+    client.emit('game_ready');
     log('游戏开始', 'PASS', `进入阶段: ${gameState?.phase}`);
 
     // ========== Step 8: 检查身份是否可见 ==========

@@ -107,6 +107,10 @@ export default function Game() {
 
     socket.on('game_state', (state: GameState) => {
       setGameState(state);
+      // 首次收到游戏中状态时，通知服务器客户端已加载完成
+      if (state.phase && state.phase !== 'waiting') {
+        socket.emit('game_ready');
+      }
     });
 
     socket.on('joined', (data: { playerId: string }) => {

@@ -154,10 +154,55 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
         }
       }
 
+      // 先广播游戏状态让客户端渲染
       broadcastPlayerViews(io, room);
       emitPhaseChange(io, room);
-      startPhaseTimer(io, room);
-      triggerAIActions(io, room);
+
+      // 等待所有真人玩家确认加载完成后才开始游戏
+      const humanPlayers = room.engine.getState().players.filter(p => p.type === PlayerType.HUMAN);
+      if (humanPlayers.length > 0) {
+        const readySet = new Set<string>();
+        const roomId = mapping.roomId;
+
+        // 设置60秒超时，防止玩家永远不确认
+        const readyTimeout = setTimeout(() => {
+          console.log(`⏰ 等待玩家就绪超时(60s)，强制开始游戏`);
+          startPhaseTimer(io, room);
+          triggerAIActions(io, room);
+        }, 60000);
+
+        // 监听所有连接的socket
+        const checkReady = () => {
+          if (readySet.size >= humanPlayers.length) {
+            clearTimeout(readyTimeout);
+            console.log(`✅ 所有真人玩家已就绪，游戏开始`);
+            // 重新广播一次确保状态同步
+            broadcastPlayerViews(io, room);
+            emitPhaseChange(io, room);
+            startPhaseTimer(io, room);
+            triggerAIActions(io, room);
+          }
+        };
+
+        // 给房间内所有socket注册 game_ready 监听
+        for (const [socketId] of io.sockets.sockets) {
+          const m = socketPlayerMap.get(socketId);
+          if (m && m.roomId === roomId) {
+            const s = io.sockets.sockets.get(socketId);
+            if (s) {
+              s.once('game_ready', () => {
+                readySet.add(m.playerId);
+                console.log(`🎮 玩家就绪: ${m.playerId.substring(0, 8)} (${readySet.size}/${humanPlayers.length})`);
+                checkReady();
+              });
+            }
+          }
+        }
+      } else {
+        // 纯AI局，直接开始
+        startPhaseTimer(io, room);
+        triggerAIActions(io, room);
+      }
     });
 
     socket.on('game_action', (data: { action: string; targetId?: string }) => {
