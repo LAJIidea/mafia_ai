@@ -58,14 +58,24 @@ export function setupRoutes(app: Express, roomManager: RoomManager): void {
     res.json(getDefaultConfig(count));
   });
 
-  // 获取局域网二维码
-  app.get('/api/qrcode', async (_req, res) => {
+  // 获取房间二维码
+  app.get('/api/qrcode', async (req, res) => {
     try {
-      const addresses = getLocalAddresses();
-      const port = process.env.PORT || '3000';
-      const url = addresses.length > 0
-        ? `http://${addresses[0]}:${port}`
-        : `http://localhost:${port}`;
+      // 优先使用环境变量中的公网域名
+      const publicDomain = process.env.PUBLIC_DOMAIN;
+      let url: string;
+
+      if (publicDomain) {
+        // 有公网域名，直接使用（不加端口，由nginx代理）
+        url = publicDomain.startsWith('http') ? publicDomain : `https://${publicDomain}`;
+      } else {
+        // 回退到局域网IP
+        const addresses = getLocalAddresses();
+        const port = process.env.PORT || '3000';
+        url = addresses.length > 0
+          ? `http://${addresses[0]}:${port}`
+          : `http://localhost:${port}`;
+      }
 
       const qrDataUrl = await QRCode.toDataURL(url, {
         width: 256,
@@ -73,7 +83,7 @@ export function setupRoutes(app: Express, roomManager: RoomManager): void {
         color: { dark: '#0f0e17', light: '#ffffff' },
       });
 
-      res.json({ url, qrCode: qrDataUrl, addresses });
+      res.json({ url, qrCode: qrDataUrl, addresses: getLocalAddresses() });
     } catch (err) {
       res.status(500).json({ error: '二维码生成失败' });
     }

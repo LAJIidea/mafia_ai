@@ -632,19 +632,22 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
             timestamp: Date.now(),
             aiModel: aiPlayer.aiModel,
           });
-          // TTS合成并广播音频（异步，不阻塞游戏流程）
-          ttsService.synthesizePlayerSpeech(speech, aiPlayer.aiModel || '')
-            .then(audioBuffer => {
-              io.to(room.id).emit('audio_broadcast', {
-                playerId: aiPlayer.id,
-                playerName: aiPlayer.name,
-                audio: audioBuffer,
-                type: 'ai',
-              });
-            })
-            .catch(ttsErr => {
-              console.warn(`AI ${aiPlayer.name} TTS失败:`, ttsErr instanceof Error ? ttsErr.message : ttsErr);
+          // TTS合成并广播音频，等语音播放完再推进发言
+          let speechDurationMs = 2000; // 默认等2秒（TTS失败时的fallback）
+          try {
+            const audioBuffer = await ttsService.synthesizePlayerSpeech(speech, aiPlayer.aiModel || '');
+            io.to(room.id).emit('audio_broadcast', {
+              playerId: aiPlayer.id,
+              playerName: aiPlayer.name,
+              audio: audioBuffer,
+              type: 'ai',
             });
+            // 估算语音时长：MP3 128kbps → 1秒≈16KB
+            speechDurationMs = Math.max(2000, Math.min((audioBuffer.length / 16000) * 1000, 30000));
+          } catch (ttsErr) {
+            console.warn(`AI ${aiPlayer.name} TTS失败:`, ttsErr instanceof Error ? ttsErr.message : ttsErr);
+          }
+
           // Write speech to all other AI agents' memory + knowledge
           for (const otherPlayer of currentState.players) {
             if (otherPlayer.type === PlayerType.AI && otherPlayer.id !== aiPlayer.id) {
@@ -658,6 +661,12 @@ async function doTriggerAIActions(io: SocketServer, room: Room): Promise<void> {
           agent.addMemory(`我发言: "${speech}"`);
           agent.recordSpeech(currentState.round, currentState.phase, aiPlayer.name, speech);
           actedSet?.add(aiPlayer.id);
+
+          // 等待语音播放完成再推进（给真人玩家听AI发言的时间）
+          if (speechDurationMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, speechDurationMs));
+          }
+
           // Advance to next speaker
           room.engine.advanceSpeaker();
           broadcastPlayerViews(io, room);
