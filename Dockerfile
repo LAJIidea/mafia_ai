@@ -28,10 +28,6 @@ COPY --from=server-build /app/server/dist ./server/dist
 # 复制前端构建产物
 COPY --from=client-build /app/client/dist ./client/dist
 
-# 复制 .env 配置文件
-COPY .env ./server/.env
-COPY .env ./.env
-
 # TTS 音频缓存目录 + 日志目录
 RUN mkdir -p /app/audio_cache /app/server/logs
 
