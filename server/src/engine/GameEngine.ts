@@ -77,17 +77,10 @@ export class GameEngine {
       return { success: false, message: '房间已满' };
     }
 
-    if (type === PlayerType.HUMAN && device === 'desktop') {
-      const desktopHumans = this.state.players.filter(p => p.type === PlayerType.HUMAN && p.device === 'desktop');
-      if (desktopHumans.length >= 1) {
-        return { success: false, message: '电脑端仅支持1名真人玩家' };
-      }
-    }
-
     if (type === PlayerType.HUMAN) {
       const humanCount = this.state.players.filter(p => p.type === PlayerType.HUMAN).length;
-      if (humanCount >= 4) {
-        return { success: false, message: '真人玩家最多4人' };
+      if (humanCount >= this.state.config.totalPlayers) {
+        return { success: false, message: '真人玩家已满' };
       }
     }
 

@@ -431,14 +431,31 @@ ${roleStrategy}
           msg += `【第${r}天发言摘要】共${speeches.length}人发言\n`;
         } else {
           msg += `【第${r}天发言记录】\n`;
-          for (const s of speeches) {
-            const prefix = s.speaker === this.playerName ? '我' : s.speaker;
-            // 在发言内容中标注"提到了你"
-            let content = s.content.substring(0, 120);
-            if (s.speaker !== this.playerName && this.playerName && content.includes(this.playerName)) {
-              content = content.replace(new RegExp(this.playerName, 'g'), `${this.playerName}(你)`);
+          // 先展示遗言，再展示讨论发言
+          const lastWords = speeches.filter(s => s.phase === GamePhase.LAST_WORDS);
+          const discussions = speeches.filter(s => s.phase !== GamePhase.LAST_WORDS);
+
+          if (lastWords.length > 0) {
+            msg += `  [遗言]\n`;
+            for (const s of lastWords) {
+              const prefix = s.speaker === this.playerName ? '我' : s.speaker;
+              let content = s.content.substring(0, 120);
+              if (s.speaker !== this.playerName && this.playerName && content.includes(this.playerName)) {
+                content = content.replace(new RegExp(this.playerName, 'g'), `${this.playerName}(你)`);
+              }
+              msg += `  - ${prefix}(遗言): "${content}"\n`;
             }
-            msg += `- ${prefix}: "${content}"\n`;
+          }
+          if (discussions.length > 0) {
+            if (lastWords.length > 0) msg += `  [讨论]\n`;
+            for (const s of discussions) {
+              const prefix = s.speaker === this.playerName ? '我' : s.speaker;
+              let content = s.content.substring(0, 120);
+              if (s.speaker !== this.playerName && this.playerName && content.includes(this.playerName)) {
+                content = content.replace(new RegExp(this.playerName, 'g'), `${this.playerName}(你)`);
+              }
+              msg += `- ${prefix}: "${content}"\n`;
+            }
           }
         }
       }
