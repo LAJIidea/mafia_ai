@@ -342,8 +342,11 @@ ${roleStrategy}
     const phase = this.getPhaseDescription(gameState.phase);
     const alivePlayers = gameState.players.filter(p => p.alive);
     const totalPlayers = gameState.players.length;
+    const roleName = ROLE_DISPLAY_NAME[player.role as RoleName] || '未知';
 
-    let msg = `===== 第${round}天 · ${phase} =====\n\n`;
+    // 每条消息开头强调身份（防止长上下文中遗忘）
+    let msg = `[提醒：你是「${player.name}」，身份是${roleName}。当别人提到「${player.name}」时就是在说你。]\n\n`;
+    msg += `===== 第${round}天 · ${phase} =====\n\n`;
 
     // 【场上状况】
     msg += `【场上状况】\n`;
@@ -430,7 +433,12 @@ ${roleStrategy}
           msg += `【第${r}天发言记录】\n`;
           for (const s of speeches) {
             const prefix = s.speaker === this.playerName ? '我' : s.speaker;
-            msg += `- ${prefix}: "${s.content.substring(0, 120)}"\n`;
+            // 在发言内容中标注"提到了你"
+            let content = s.content.substring(0, 120);
+            if (s.speaker !== this.playerName && this.playerName && content.includes(this.playerName)) {
+              content = content.replace(new RegExp(this.playerName, 'g'), `${this.playerName}(你)`);
+            }
+            msg += `- ${prefix}: "${content}"\n`;
           }
         }
       }
@@ -575,10 +583,11 @@ ${alivePlayers.filter(p => p.id !== player.id).map(p => `- ${p.name} (ID: ${p.id
       const removed = this.conversationHistory.slice(1, -18);
       const summary = this.compressMessages(removed);
 
+      const roleName = ROLE_DISPLAY_NAME[this.playerRole as RoleName] || this.playerRole;
       this.conversationHistory = [
         system,
-        { role: 'user', content: `【之前的游戏摘要】\n${summary}` },
-        { role: 'assistant', content: '好的，我已了解之前的游戏情况，继续。' },
+        { role: 'user', content: `[提醒：你是「${this.playerName}」，身份是${roleName}。]\n\n【之前的游戏摘要】\n${summary}` },
+        { role: 'assistant', content: `好的，我是${this.playerName}，我已了解之前的游戏情况，继续。` },
         ...recentMessages,
       ];
     }
