@@ -36,14 +36,17 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
       // 停止录音
       if (speechSupported) stopListening();
 
+      // 通知服务器语音流结束
+      socket.emit('voice_stream_end');
+
       const audioBlob = await stopRecording();
       if (audioBlob && audioBlob.size > 1000) {
-        // 上传音频到服务器（广播给其他真人 + STT转文字给AI）
+        // 发送完整音频用于服务端STT转文字（给AI用）
         const arrayBuffer = await audioBlob.arrayBuffer();
         socket.emit('voice_audio', { audio: arrayBuffer });
       }
 
-      // 同时发送Web Speech API的即时文字（作为快速反馈给聊天面板）
+      // 发送Web Speech API的即时文字到聊天面板
       if (transcript.trim()) {
         onSendVoice(transcript.trim());
       }
@@ -58,21 +61,28 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
       resetTranscript();
       setSent(false);
 
-      // 同时启动MediaRecorder录音 + Web Speech API识别
-      await startRecording();
+      // 通知服务器开始语音流
+      socket.emit('voice_stream_start');
+
+      // 启动录音，流式发送每个chunk给服务器实时广播
+      await startRecording((chunk: ArrayBuffer) => {
+        socket.emit('voice_chunk', { audio: chunk });
+      });
+
+      // 同时启动Web Speech API做实时文字识别
       if (speechSupported) startListening();
     }
   }, [isRecording, transcript, stopListening, startListening, resetTranscript,
       onSendVoice, startRecording, stopRecording, speechSupported, socket]);
 
   const handleCancel = useCallback(() => {
+    socket.emit('voice_stream_end');
     cancelRecording();
     if (speechSupported) stopListening();
     resetTranscript();
-  }, [cancelRecording, stopListening, resetTranscript, speechSupported]);
+  }, [cancelRecording, stopListening, resetTranscript, speechSupported, socket]);
 
   const error = recordError || speechError;
-  // 显示文字 = 已确认文字 + 正在识别中的文字
   const displayText = transcript + (interimText ? interimText : '');
 
   return (

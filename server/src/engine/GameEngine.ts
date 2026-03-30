@@ -357,6 +357,12 @@ export class GameEngine {
         this.transitionTo(GamePhase.VOTING);
         break;
       case GamePhase.VOTING:
+        // 超时未投票的存活玩家按弃票处理
+        for (const p of this.state.players) {
+          if (p.alive && !this.state.votes.find(v => v.voterId === p.id)) {
+            this.state.votes.push({ voterId: p.id, targetId: null });
+          }
+        }
         this.resolveVotes();
         break;
       case GamePhase.VOTE_RESULT:
@@ -371,6 +377,13 @@ export class GameEngine {
         this.transitionTo(GamePhase.PK_VOTING);
         break;
       case GamePhase.PK_VOTING:
+        // PK投票超时未投票按弃票处理（PK候选人不能投票）
+        for (const p of this.state.players) {
+          if (p.alive && !(this.state.pkCandidates || []).includes(p.id)
+            && !this.state.votes.find(v => v.voterId === p.id)) {
+            this.state.votes.push({ voterId: p.id, targetId: null });
+          }
+        }
         this.resolvePKVotes();
         break;
       case GamePhase.HUNTER_SHOOT:

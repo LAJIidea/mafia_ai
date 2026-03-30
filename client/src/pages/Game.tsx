@@ -154,14 +154,35 @@ export default function Game() {
       // AI发言语音现在由服务端通过audio_broadcast推送，无需客户端调TTS API
     });
 
-    // 接收服务端推送的音频（AI发言/真人语音）
+    // 接收服务端推送的音频（AI发言语音）
     socket.on('audio_broadcast', (data: { playerId: string; playerName: string; audio: ArrayBuffer; type: string }) => {
       if (!voiceEnabled) return;
       if (data.audio) {
-        // 真人录音是webm格式，AI合成是mp3格式
-        const mimeType = data.type === 'human' ? 'audio/webm' : 'audio/mp3';
-        playAudio(data.audio, mimeType).catch(() => {});
+        playAudio(data.audio, 'audio/mp3').catch(() => {});
       }
+    });
+
+    // 接收真人语音流式播放
+    let streamChunks: ArrayBuffer[] = [];
+    socket.on('voice_stream_start', () => {
+      streamChunks = [];
+    });
+    socket.on('voice_chunk', (data: { audio: ArrayBuffer }) => {
+      if (!voiceEnabled) return;
+      streamChunks.push(data.audio);
+    });
+    socket.on('voice_stream_end', () => {
+      if (!voiceEnabled || streamChunks.length === 0) return;
+      // 将所有chunk拼接为完整音频播放
+      const totalLength = streamChunks.reduce((sum, c) => sum + c.byteLength, 0);
+      const merged = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of streamChunks) {
+        merged.set(new Uint8Array(chunk), offset);
+        offset += chunk.byteLength;
+      }
+      playAudio(merged.buffer, 'audio/webm').catch(() => {});
+      streamChunks = [];
     });
 
     socket.on('action_result', (result: { success: boolean; message?: string; data?: Record<string, unknown> }) => {
@@ -186,6 +207,9 @@ export default function Game() {
       socket.off('chat_message');
       socket.off('action_result');
       socket.off('audio_broadcast');
+      socket.off('voice_stream_start');
+      socket.off('voice_chunk');
+      socket.off('voice_stream_end');
     };
   }, [socket, roomId, playNarratorVoice, voiceEnabled, playAudio]);
 
