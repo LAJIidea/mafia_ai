@@ -44,8 +44,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       };
 
       await audio.play();
-    } catch (err) {
-      console.error('音频播放失败:', err);
+    } catch (err: any) {
+      // AbortError 是正常的竞态：新音频播放时打断了旧音频，不需要报错
+      if (err?.name !== 'AbortError') {
+        console.error('音频播放失败:', err);
+      }
       isPlayingRef.current = false;
     }
   }, []);

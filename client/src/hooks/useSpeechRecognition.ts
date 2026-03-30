@@ -40,24 +40,22 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       };
 
       recognition.onresult = (event) => {
-        let finalPart = '';
-        let interimPart = '';
+        // 每次遍历所有results重新拼接（不依赖增量，避免覆盖问题）
+        let allFinal = '';
+        let currentInterim = '';
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
-            finalPart += result[0].transcript;
+            allFinal += result[0].transcript;
           } else {
-            interimPart += result[0].transcript;
+            currentInterim += result[0].transcript;
           }
         }
 
-        // 只有最终确认的文字才累加到transcript
-        if (finalPart) {
-          setTranscript(prev => prev + finalPart);
-        }
-        // 中间结果只临时显示，每次替换（不累加）
-        setInterimText(interimPart);
+        // 直接设置完整的已确认文字（不用累加，避免重复）
+        setTranscript(allFinal);
+        setInterimText(currentInterim);
       };
 
       recognition.onerror = (event) => {
