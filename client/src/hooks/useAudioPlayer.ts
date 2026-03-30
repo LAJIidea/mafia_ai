@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 
 interface UseAudioPlayerReturn {
-  playAudio: (audioData: ArrayBuffer | string) => Promise<void>;
+  playAudio: (audioData: ArrayBuffer | string, mimeType?: string) => Promise<void>;
   stopAudio: () => void;
   isPlaying: boolean;
 }
@@ -10,7 +10,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isPlayingRef = useRef(false);
 
-  const playAudio = useCallback(async (audioData: ArrayBuffer | string) => {
+  const playAudio = useCallback(async (audioData: ArrayBuffer | string, mimeType?: string) => {
     stopAudioInternal();
 
     try {
@@ -25,7 +25,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         }
       } else {
         // ArrayBuffer
-        const blob = new Blob([audioData], { type: 'audio/mp3' });
+        const blob = new Blob([audioData], { type: mimeType || 'audio/mp3' });
         url = URL.createObjectURL(blob);
       }
 

@@ -158,7 +158,9 @@ export default function Game() {
     socket.on('audio_broadcast', (data: { playerId: string; playerName: string; audio: ArrayBuffer; type: string }) => {
       if (!voiceEnabled) return;
       if (data.audio) {
-        playAudio(data.audio).catch(() => {});
+        // 真人录音是webm格式，AI合成是mp3格式
+        const mimeType = data.type === 'human' ? 'audio/webm' : 'audio/mp3';
+        playAudio(data.audio, mimeType).catch(() => {});
       }
     });
 

@@ -2,7 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 
 interface UseSpeechRecognitionReturn {
   isListening: boolean;
-  transcript: string;
+  transcript: string;        // 最终确认的文字（只增不减）
+  interimText: string;       // 当前正在识别的中间文字（会被替换）
   error: string | null;
   startListening: () => void;
   stopListening: () => void;
@@ -13,6 +14,7 @@ interface UseSpeechRecognitionReturn {
 export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [interimText, setInterimText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
@@ -38,19 +40,24 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       };
 
       recognition.onresult = (event) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
+        let finalPart = '';
+        let interimPart = '';
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
-            finalTranscript += result[0].transcript;
+            finalPart += result[0].transcript;
           } else {
-            interimTranscript += result[0].transcript;
+            interimPart += result[0].transcript;
           }
         }
 
-        setTranscript(prev => prev + finalTranscript + interimTranscript);
+        // 只有最终确认的文字才累加到transcript
+        if (finalPart) {
+          setTranscript(prev => prev + finalPart);
+        }
+        // 中间结果只临时显示，每次替换（不累加）
+        setInterimText(interimPart);
       };
 
       recognition.onerror = (event) => {
@@ -60,6 +67,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
       recognition.onend = () => {
         setIsListening(false);
+        setInterimText('');
       };
 
       recognitionRef.current = recognition;
@@ -75,15 +83,18 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       recognitionRef.current = null;
     }
     setIsListening(false);
+    setInterimText('');
   }, []);
 
   const resetTranscript = useCallback(() => {
     setTranscript('');
+    setInterimText('');
   }, []);
 
   return {
     isListening,
     transcript,
+    interimText,
     error,
     startListening,
     stopListening,

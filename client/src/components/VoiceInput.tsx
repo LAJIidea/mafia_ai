@@ -12,6 +12,7 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
   const {
     isListening,
     transcript,
+    interimText,
     error: speechError,
     startListening,
     stopListening,
@@ -37,12 +38,12 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
 
       const audioBlob = await stopRecording();
       if (audioBlob && audioBlob.size > 1000) {
-        // 上传音频到服务器（广播+STT）
+        // 上传音频到服务器（广播给其他真人 + STT转文字给AI）
         const arrayBuffer = await audioBlob.arrayBuffer();
         socket.emit('voice_audio', { audio: arrayBuffer });
       }
 
-      // 同时发送Web Speech API的即时文字（作为快速反馈）
+      // 同时发送Web Speech API的即时文字（作为快速反馈给聊天面板）
       if (transcript.trim()) {
         onSendVoice(transcript.trim());
       }
@@ -71,6 +72,8 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
   }, [cancelRecording, stopListening, resetTranscript, speechSupported]);
 
   const error = recordError || speechError;
+  // 显示文字 = 已确认文字 + 正在识别中的文字
+  const displayText = transcript + (interimText ? interimText : '');
 
   return (
     <div className="space-y-2">
@@ -99,10 +102,11 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
         )}
       </div>
 
-      {isListening && transcript && (
+      {isListening && displayText && (
         <div className="bg-night/60 rounded-lg px-3 py-2 text-sm text-gray-300">
           <span className="text-xs text-wolf">实时识别: </span>
           {transcript}
+          {interimText && <span className="text-gray-500">{interimText}</span>}
         </div>
       )}
 
