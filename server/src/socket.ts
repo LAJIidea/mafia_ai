@@ -319,7 +319,7 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
 
       const audioBuffer = Buffer.from(data.audio);
 
-      // 1. 广播完整音频给房间内其他真人玩家
+      // 广播完整音频给房间内其他真人玩家
       for (const [sid, s] of io.sockets.sockets) {
         const m = socketPlayerMap.get(sid);
         if (m && m.roomId === mapping.roomId && m.playerId !== mapping.playerId) {
@@ -331,35 +331,8 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
         }
       }
 
-      // 2. STT转录 → 写入AI记忆 + 广播文字消息
-      let transcribedText = '';
-      if (sttService.isAvailable()) {
-        transcribedText = await sttService.transcribe(audioBuffer);
-      }
-
-      if (transcribedText) {
-        // 广播文字消息
-        io.to(mapping.roomId).emit('chat_message', {
-          playerId: mapping.playerId,
-          playerName: player.name,
-          message: transcribedText,
-          type: 'voice' as const,
-          timestamp: Date.now(),
-        });
-
-        // 写入AI agent记忆
-        const aiManager = roomAIManagers.get(mapping.roomId);
-        if (aiManager) {
-          for (const aiPlayer of state.players) {
-            if (aiPlayer.type === PlayerType.AI && aiPlayer.id !== mapping.playerId) {
-              const agent = aiManager.getAgent(aiPlayer.id);
-              if (agent) {
-                agent.addMemory(`${player.name}说: "${transcribedText}"`);
-              }
-            }
-          }
-        }
-      }
+      // 文字转录由客户端Web Speech API完成，通过chat_message事件发送
+      // 服务端不再做STT转录（Paraformer需要file_urls模式，不支持直接上传）
     });
 
     socket.on('disconnect', () => {
