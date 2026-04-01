@@ -10,7 +10,6 @@ interface Props {
 
 export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
   const {
-    isListening,
     transcript,
     interimText,
     error: speechError,
@@ -36,12 +35,9 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
       // 停止录音
       if (speechSupported) stopListening();
 
-      // 通知服务器语音流结束
-      socket.emit('voice_stream_end');
-
       const audioBlob = await stopRecording();
       if (audioBlob && audioBlob.size > 1000) {
-        // 发送完整音频用于服务端STT转文字（给AI用）
+        // 发送完整音频到服务器（广播给其他真人 + STT转文字给AI）
         const arrayBuffer = await audioBlob.arrayBuffer();
         socket.emit('voice_audio', { audio: arrayBuffer });
       }
@@ -61,13 +57,8 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
       resetTranscript();
       setSent(false);
 
-      // 通知服务器开始语音流
-      socket.emit('voice_stream_start');
-
-      // 启动录音，流式发送每个chunk给服务器实时广播
-      await startRecording((chunk: ArrayBuffer) => {
-        socket.emit('voice_chunk', { audio: chunk });
-      });
+      // 启动MediaRecorder录音
+      await startRecording();
 
       // 同时启动Web Speech API做实时文字识别
       if (speechSupported) startListening();
@@ -76,14 +67,12 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
       onSendVoice, startRecording, stopRecording, speechSupported, socket]);
 
   const handleCancel = useCallback(() => {
-    socket.emit('voice_stream_end');
     cancelRecording();
     if (speechSupported) stopListening();
     resetTranscript();
-  }, [cancelRecording, stopListening, resetTranscript, speechSupported, socket]);
+  }, [cancelRecording, stopListening, resetTranscript, speechSupported]);
 
   const error = recordError || speechError;
-  const displayText = transcript + (interimText ? interimText : '');
 
   return (
     <div className="space-y-2">
@@ -112,7 +101,8 @@ export default function VoiceInput({ onSendVoice, canSpeak }: Props) {
         )}
       </div>
 
-      {isListening && displayText && (
+      {/* 实时语音转文字显示 */}
+      {isRecording && (transcript || interimText) && (
         <div className="bg-night/60 rounded-lg px-3 py-2 text-sm text-gray-300">
           <span className="text-xs text-wolf">实时识别: </span>
           {transcript}

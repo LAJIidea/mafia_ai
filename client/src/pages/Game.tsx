@@ -162,27 +162,12 @@ export default function Game() {
       }
     });
 
-    // 接收真人语音流式播放
-    let streamChunks: ArrayBuffer[] = [];
-    socket.on('voice_stream_start', () => {
-      streamChunks = [];
-    });
-    socket.on('voice_chunk', (data: { audio: ArrayBuffer }) => {
+    // 接收真人完整语音录音并播放
+    socket.on('human_voice_broadcast', (data: { playerId: string; playerName: string; audio: ArrayBuffer }) => {
       if (!voiceEnabled) return;
-      streamChunks.push(data.audio);
-    });
-    socket.on('voice_stream_end', () => {
-      if (!voiceEnabled || streamChunks.length === 0) return;
-      // 将所有chunk拼接为完整音频播放
-      const totalLength = streamChunks.reduce((sum, c) => sum + c.byteLength, 0);
-      const merged = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of streamChunks) {
-        merged.set(new Uint8Array(chunk), offset);
-        offset += chunk.byteLength;
+      if (data.audio) {
+        playAudio(data.audio, 'audio/webm').catch(() => {});
       }
-      playAudio(merged.buffer, 'audio/webm').catch(() => {});
-      streamChunks = [];
     });
 
     socket.on('action_result', (result: { success: boolean; message?: string; data?: Record<string, unknown> }) => {
@@ -207,9 +192,7 @@ export default function Game() {
       socket.off('chat_message');
       socket.off('action_result');
       socket.off('audio_broadcast');
-      socket.off('voice_stream_start');
-      socket.off('voice_chunk');
-      socket.off('voice_stream_end');
+      socket.off('human_voice_broadcast');
     };
   }, [socket, roomId, playNarratorVoice, voiceEnabled, playAudio]);
 

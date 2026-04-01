@@ -299,48 +299,7 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
       }
     });
 
-    // 真人语音流式转发 - 实时广播给其他真人玩家
-    socket.on('voice_stream_start', () => {
-      const mapping = socketPlayerMap.get(socket.id);
-      if (!mapping) return;
-      // 通知其他真人玩家有人开始说话
-      const room = roomManager.getRoom(mapping.roomId);
-      if (!room) return;
-      const state = room.engine.getState();
-      const player = state.players.find(p => p.id === mapping.playerId);
-      for (const [sid, s] of io.sockets.sockets) {
-        const m = socketPlayerMap.get(sid);
-        if (m && m.roomId === mapping.roomId && m.playerId !== mapping.playerId) {
-          s.emit('voice_stream_start', { playerId: mapping.playerId, playerName: player?.name });
-        }
-      }
-    });
-
-    socket.on('voice_chunk', (data: { audio: ArrayBuffer }) => {
-      const mapping = socketPlayerMap.get(socket.id);
-      if (!mapping) return;
-      // 实时转发音频chunk给房间内其他真人玩家
-      const chunk = Buffer.from(data.audio);
-      for (const [sid, s] of io.sockets.sockets) {
-        const m = socketPlayerMap.get(sid);
-        if (m && m.roomId === mapping.roomId && m.playerId !== mapping.playerId) {
-          s.emit('voice_chunk', { audio: chunk });
-        }
-      }
-    });
-
-    socket.on('voice_stream_end', () => {
-      const mapping = socketPlayerMap.get(socket.id);
-      if (!mapping) return;
-      for (const [sid, s] of io.sockets.sockets) {
-        const m = socketPlayerMap.get(sid);
-        if (m && m.roomId === mapping.roomId && m.playerId !== mapping.playerId) {
-          s.emit('voice_stream_end');
-        }
-      }
-    });
-
-    // 真人玩家语音发言 - 接收完整录音（用于STT转文字给AI）
+    // 真人玩家语音发言 - 接收完整录音（广播+STT）
     socket.on('voice_audio', async (data: { audio: ArrayBuffer }) => {
       const mapping = socketPlayerMap.get(socket.id);
       if (!mapping) return;
@@ -360,8 +319,19 @@ export function setupSocketHandlers(io: SocketServer, roomManager: RoomManager):
 
       const audioBuffer = Buffer.from(data.audio);
 
-      // 音频已通过voice_chunk实时流式广播给其他真人，这里只做STT转录
-      // STT转录 → 写入AI记忆 + 广播文字消息
+      // 1. 广播完整音频给房间内其他真人玩家
+      for (const [sid, s] of io.sockets.sockets) {
+        const m = socketPlayerMap.get(sid);
+        if (m && m.roomId === mapping.roomId && m.playerId !== mapping.playerId) {
+          s.emit('human_voice_broadcast', {
+            playerId: mapping.playerId,
+            playerName: player.name,
+            audio: audioBuffer,
+          });
+        }
+      }
+
+      // 2. STT转录 → 写入AI记忆 + 广播文字消息
       let transcribedText = '';
       if (sttService.isAvailable()) {
         transcribedText = await sttService.transcribe(audioBuffer);
